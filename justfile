@@ -15,10 +15,10 @@ test:
 doc:
     zig build docs --summary all
 
-[doc("Serve the generated reference at http://127.0.0.1:8000")]
+[doc("Serve the generated reference at http://127.0.0.1:8000 (override the port with PORT)")]
 [group("docs")]
 serve: doc
-    python3 -m http.server -d zig-out/docs 8000
+    python3 -m http.server -b 127.0.0.1 -d zig-out/docs "${PORT:-8000}"
 
 [doc("Lint Zig, Nix, Markdown, CSS, the workflows, and this justfile")]
 [group("lint")]

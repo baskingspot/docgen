@@ -18,7 +18,8 @@ zig build run -- --root src/root.zig --out zig-out/docs --title mylib \
 ```
 
 `just doc` builds the reference for this repository into `zig-out/docs`.
-`just serve` serves it at <http://127.0.0.1:8000>.
+`just serve` serves it at <http://127.0.0.1:8000>. Set `PORT` to change the port:
+`PORT=9000 just serve`.
 
 ## Build integration
 
