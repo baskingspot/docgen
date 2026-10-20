@@ -4,14 +4,15 @@ const docgen = @import("docgen");
 const usage =
     \\Usage: docgen --root PATH --out DIR [options]
     \\
-    \\Generate a static HTML API reference from a Zig package.
+    \\Generate a static API reference from a Zig package.
     \\
     \\Options:
     \\  --root PATH      Root source file, for example src/root.zig
-    \\  --out DIR        Directory for index.html
-    \\  --title TEXT     Page title (default: the root file stem)
+    \\  --out DIR        Directory for index.html or api.json
+    \\  --title TEXT     Package name and page title (default: the root file stem)
     \\  --repo-url URL   Repository URL for source links
     \\  --rev REF        Commit or branch for source links (default: main)
+    \\  --format FORMAT  Output format: html or json (default: html)
     \\  -h, --help       Show this help
     \\
 ;
@@ -27,6 +28,7 @@ pub fn main(init: std.process.Init) !void {
     var title: ?[]const u8 = null;
     var repo_url: []const u8 = "";
     var rev: []const u8 = "main";
+    var format: docgen.Format = .html;
 
     while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
@@ -42,6 +44,16 @@ pub fn main(init: std.process.Init) !void {
             repo_url = args.next() orelse return usageError("--repo-url needs a value");
         } else if (std.mem.eql(u8, arg, "--rev")) {
             rev = args.next() orelse return usageError("--rev needs a value");
+        } else if (std.mem.eql(u8, arg, "--format")) {
+            const value = args.next() orelse return usageError("--format needs a value");
+            if (std.mem.eql(u8, value, "html")) {
+                format = .html;
+            } else if (std.mem.eql(u8, value, "json")) {
+                format = .json;
+            } else {
+                std.debug.print("unknown format: {s}\n\n{s}", .{ value, usage });
+                return error.BadArgs;
+            }
         } else {
             std.debug.print("unknown argument: {s}\n\n{s}", .{ arg, usage });
             return error.BadArgs;
@@ -50,14 +62,15 @@ pub fn main(init: std.process.Init) !void {
 
     const root = root_path orelse return usageError("--root is required");
     const out = out_dir orelse return usageError("--out is required");
-    const page_title = title orelse std.fs.path.stem(root);
+    const package_name = title orelse std.fs.path.stem(root);
 
     const result = try docgen.generate(allocator, init.io, .{
         .root_path = root,
         .out_dir = out,
-        .title = page_title,
+        .title = package_name,
         .repo_url = repo_url,
         .rev = rev,
+        .format = format,
     });
     var buf: [1024]u8 = undefined;
     const message = try std.fmt.bufPrint(&buf, "wrote {s} ({d} symbols)\n", .{

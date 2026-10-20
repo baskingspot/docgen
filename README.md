@@ -1,8 +1,9 @@
 # docgen
 
-Static HTML API documentation for a Zig package. Point it at a root source
-file; it writes one `index.html` with the public declarations, their doc
-comments, and links to the source on GitHub.
+Static API documentation for a Zig package. Point it at a root source file;
+it writes one `index.html` with the public declarations, their doc comments,
+and links to the source on GitHub. `--format json` writes the same document
+as `api.json` instead.
 
 This is a POC. It reads Zig syntax with `std.zig.Ast`. It does not use the
 compiler's WebAssembly docs viewer, and it ships no JavaScript or
@@ -20,6 +21,18 @@ zig build run -- --root src/root.zig --out zig-out/docs --title mylib \
 `just doc` builds the reference for this repository into `zig-out/docs`.
 `just serve` serves it at <http://127.0.0.1:8000>. Set `PORT` to change the port:
 `PORT=9000 just serve`.
+
+Write the extracted model as JSON instead of HTML:
+
+```sh
+zig build run -- --root src/root.zig --out /tmp/docgen-api --format json
+```
+
+That writes `/tmp/docgen-api/api.json`: schema version 1, the package
+metadata, the root `//!` docs, one flat pre-order symbol list, and an empty
+`diagnostics` list. Doc comments stay raw markdown and signatures stay source
+text; there is no HTML and there are no source URLs in the JSON. Treat the
+JSON model as the stable interface; the HTML page is a renderer of it.
 
 ### Document another repository
 
@@ -80,11 +93,11 @@ creates that directory and gives the install step a `LazyPath`.
   aliases such as `pub const pages = if (...) pages_mod else void;`.
 - Collects `pub` declarations and public container members.
 - Renders doc comments as paragraphs, headings, and inline code.
-- Writes one page with an inline stylesheet. The page makes no network
-  requests.
+- Writes one page with an inline stylesheet, or the model as JSON with
+  `--format json`. The page makes no network requests.
 
 On stdx, run from the stdx checkout with `--root src/root.zig`, it writes
-527 sections in 269 KB. Gzipped, the page is 42 KB.
+527 sections in 315 KB. Gzipped, the page is 45 KB.
 
 ## Limits
 

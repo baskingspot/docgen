@@ -12,6 +12,9 @@ All notable changes to docgen are recorded here. The format follows
   GitHub.
 - Type functions that return a container inline, such as
   `pub fn Array(...) type { return struct { ... }; }`, list their members.
+- `--format json` writes the extracted document as `api.json`, and the library
+  exports the public `Document` model with `extract`, `renderHtml`, and
+  `writeJson`.
 
 ### Fixed
 
