@@ -1,0 +1,17 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ci:
+    permissions:
+      contents: read
+    uses: baskingspot/gh-actions/.github/workflows/ci.yml@bf313f8558e63403ef5e1e148b488f84757e0e70 # v0.11.0
+    secrets:
+      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
