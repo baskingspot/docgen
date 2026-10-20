@@ -1,4 +1,4 @@
-//! The autodoc library: turn a Zig source tree into static HTML.
+//! The docgen library: turn a Zig source tree into static HTML.
 
 pub const generate = @import("generate.zig").generate;
 pub const Options = @import("generate.zig").Options;

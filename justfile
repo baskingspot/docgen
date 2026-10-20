@@ -1,4 +1,4 @@
-# autodoc: A static HTML generator for Zig API documentation. `just --list` shows the recipes.
+# docgen: A static HTML generator for Zig API documentation. `just --list` shows the recipes.
 # AGENTS.md holds the working conventions.
 
 [private]

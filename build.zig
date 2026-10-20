@@ -4,26 +4,26 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const mod = b.addModule("autodoc", .{
+    const mod = b.addModule("docgen", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
 
     const exe = b.addExecutable(.{
-        .name = "autodoc",
+        .name = "docgen",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "autodoc", .module = mod },
+                .{ .name = "docgen", .module = mod },
             },
         }),
     });
     b.installArtifact(exe);
 
-    const run_step = b.step("run", "Run autodoc");
+    const run_step = b.step("run", "Run docgen");
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);
     if (b.args) |args| run_cmd.addArgs(args);
@@ -41,8 +41,8 @@ pub fn build(b: *std.Build) void {
     const docs_run = b.addRunArtifact(exe);
     docs_run.addArgs(&.{
         "--root",     "src/generate.zig",
-        "--title",    "autodoc",
-        "--repo-url", "https://github.com/baskingspot/autodoc",
+        "--title",    "docgen",
+        "--repo-url", "https://github.com/baskingspot/docgen",
         "--rev",      "main",
         "--out",
     });

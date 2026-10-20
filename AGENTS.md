@@ -1,15 +1,15 @@
 # AGENTS.md
 
-Working notes for AI coding agents in baskingspot/autodoc.
+Working notes for AI coding agents in baskingspot/docgen.
 
 ## What this is
 
 A static HTML API reference generator for Zig packages. It is incubating and
 is a POC: the API, the HTML, and the supported syntax will change.
 
-The tool has two shapes. The `autodoc` executable is the standalone CLI. The
-`autodoc` module is the library API, so a consumer can call
-`autodoc.generate` from a build step.
+The tool has two shapes. The `docgen` executable is the standalone CLI. The
+`docgen` module is the library API, so a consumer can call
+`docgen.generate` from a build step.
 
 ## Environment
 

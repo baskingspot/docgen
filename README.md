@@ -1,4 +1,4 @@
-# autodoc
+# docgen
 
 Static HTML API documentation for a Zig package. Point it at a root source
 file; it writes one `index.html` with the public declarations, their doc
@@ -28,11 +28,11 @@ repository. Build the binary once, then run it from the checkout you want to
 document:
 
 ```sh
-cd ~/code/baskingspot/autodoc
+cd ~/code/baskingspot/docgen
 zig build
 
 cd ~/code/baskingspot/stdx
-../autodoc/zig-out/bin/autodoc \
+../docgen/zig-out/bin/docgen \
   --root src/root.zig \
   --out /tmp/stdx-api \
   --title stdx \
@@ -47,13 +47,13 @@ to that repository.
 
 ## Build integration
 
-Add autodoc as a dependency, then run its artifact as a build step:
+Add docgen as a dependency, then run its artifact as a build step:
 
 ```zig
-const autodoc_dep = b.dependency("autodoc", .{});
-const autodoc = autodoc_dep.artifact("autodoc");
+const docgen_dep = b.dependency("docgen", .{});
+const docgen = docgen_dep.artifact("docgen");
 
-const docs = b.addRunArtifact(autodoc);
+const docs = b.addRunArtifact(docgen);
 docs.addArgs(&.{
     "--root",     "src/root.zig",
     "--title",    "mylib",

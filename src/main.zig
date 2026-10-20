@@ -1,8 +1,8 @@
 const std = @import("std");
-const autodoc = @import("autodoc");
+const docgen = @import("docgen");
 
 const usage =
-    \\Usage: autodoc --root PATH --out DIR [options]
+    \\Usage: docgen --root PATH --out DIR [options]
     \\
     \\Generate a static HTML API reference from a Zig package.
     \\
@@ -52,7 +52,7 @@ pub fn main(init: std.process.Init) !void {
     const out = out_dir orelse return usageError("--out is required");
     const page_title = title orelse std.fs.path.stem(root);
 
-    const result = try autodoc.generate(allocator, init.io, .{
+    const result = try docgen.generate(allocator, init.io, .{
         .root_path = root,
         .out_dir = out,
         .title = page_title,
@@ -72,5 +72,5 @@ fn usageError(message: []const u8) error{BadArgs} {
 }
 
 test {
-    _ = autodoc;
+    _ = docgen;
 }
