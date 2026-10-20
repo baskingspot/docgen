@@ -10,13 +10,23 @@ default:
 test:
     zig build test --summary all
 
-[doc("Lint Zig, Nix, Markdown, the workflows, and this justfile: ziglint, zig fmt, nix fmt, oxfmt, actionlint, zizmor, and just --fmt")]
+[doc("Generate the API reference into zig-out/docs")]
+[group("docs")]
+doc:
+    zig build docs --summary all
+
+[doc("Serve the generated reference at http://127.0.0.1:8000")]
+[group("docs")]
+serve: doc
+    python3 -m http.server -d zig-out/docs 8000
+
+[doc("Lint Zig, Nix, Markdown, CSS, the workflows, and this justfile")]
 [group("lint")]
 lint:
     ziglint
     zig fmt --check src build.zig
     nix fmt -- --ci
-    oxfmt --check README.md AGENTS.md .github
+    oxfmt --check README.md AGENTS.md CHANGELOG.md src/style.css .github
     actionlint
     zizmor .
     just --fmt --check
@@ -26,9 +36,9 @@ lint:
 fmt:
     zig fmt src build.zig
     nix fmt
-    oxfmt README.md AGENTS.md .github
+    oxfmt README.md AGENTS.md CHANGELOG.md src/style.css .github
     just --fmt
 
-[doc("Everything CI runs")]
+[doc("Everything CI runs: the tests, lint, and the API reference build")]
 [group("ci")]
-ci: test lint
+ci: test lint doc

@@ -1,71 +1,76 @@
 const std = @import("std");
-const Io = std.Io;
-
 const autodoc = @import("autodoc");
 
+const usage =
+    \\Usage: autodoc --root PATH --out DIR [options]
+    \\
+    \\Generate a static HTML API reference from a Zig package.
+    \\
+    \\Options:
+    \\  --root PATH      Root source file, for example src/root.zig
+    \\  --out DIR        Directory for index.html
+    \\  --title TEXT     Page title (default: the root file stem)
+    \\  --repo-url URL   Repository URL for source links
+    \\  --rev REF        Commit or branch for source links (default: main)
+    \\  -h, --help       Show this help
+    \\
+;
+
 pub fn main(init: std.process.Init) !void {
-    // Prints to stderr, unbuffered, ignoring potential errors.
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+    const allocator = init.arena.allocator();
+    var args = try init.minimal.args.iterateAllocator(init.gpa);
+    defer args.deinit();
+    _ = args.skip();
 
-    // This is appropriate for anything that lives as long as the process.
-    const arena: std.mem.Allocator = init.arena.allocator();
+    var root_path: ?[]const u8 = null;
+    var out_dir: ?[]const u8 = null;
+    var title: ?[]const u8 = null;
+    var repo_url: []const u8 = "";
+    var rev: []const u8 = "main";
 
-    // Accessing command line arguments:
-    const args = try init.minimal.args.toSlice(arena);
-    for (args) |arg| {
-        std.log.info("arg: {s}", .{arg});
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
+            try std.Io.File.stdout().writeStreamingAll(init.io, usage);
+            return;
+        } else if (std.mem.eql(u8, arg, "--root")) {
+            root_path = args.next() orelse return usageError("--root needs a value");
+        } else if (std.mem.eql(u8, arg, "--out")) {
+            out_dir = args.next() orelse return usageError("--out needs a value");
+        } else if (std.mem.eql(u8, arg, "--title")) {
+            title = args.next() orelse return usageError("--title needs a value");
+        } else if (std.mem.eql(u8, arg, "--repo-url")) {
+            repo_url = args.next() orelse return usageError("--repo-url needs a value");
+        } else if (std.mem.eql(u8, arg, "--rev")) {
+            rev = args.next() orelse return usageError("--rev needs a value");
+        } else {
+            std.debug.print("unknown argument: {s}\n\n{s}", .{ arg, usage });
+            return error.BadArgs;
+        }
     }
 
-    // In order to do I/O operations need an `Io` instance.
-    const io = init.io;
+    const root = root_path orelse return usageError("--root is required");
+    const out = out_dir orelse return usageError("--out is required");
+    const page_title = title orelse std.fs.path.stem(root);
 
-    // Stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    var stdout_buffer: [1024]u8 = undefined;
-    var stdout_file_writer: Io.File.Writer = .init(.stdout(), io, &stdout_buffer);
-    const stdout_writer = &stdout_file_writer.interface;
-
-    try autodoc.printAnotherMessage(stdout_writer);
-
-    try stdout_writer.flush(); // Don't forget to flush!
+    const result = try autodoc.generate(allocator, init.io, .{
+        .root_path = root,
+        .out_dir = out,
+        .title = page_title,
+        .repo_url = repo_url,
+        .rev = rev,
+    });
+    var buf: [1024]u8 = undefined;
+    const message = try std.fmt.bufPrint(&buf, "wrote {s} ({d} symbols)\n", .{
+        result.out_path, result.symbols,
+    });
+    try std.Io.File.stdout().writeStreamingAll(init.io, message);
 }
 
-test "simple test" {
-    const gpa = std.testing.allocator;
-    var list: std.ArrayList(i32) = .empty;
-    defer list.deinit(gpa); // Try commenting this out and see if zig detects the memory leak!
-    try list.append(gpa, 42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
+fn usageError(message: []const u8) error{BadArgs} {
+    std.debug.print("{s}\n\n{s}", .{ message, usage });
+    return error.BadArgs;
 }
 
-test "fuzz example" {
-    try std.testing.fuzz({}, testOne, .{});
-}
-
-fn testOne(context: void, smith: *std.testing.Smith) !void {
-    _ = context;
-    // Try passing `--fuzz` to `zig build test` and see if it manages to fail this test case!
-
-    const gpa = std.testing.allocator;
-    var list: std.ArrayList(u8) = .empty;
-    defer list.deinit(gpa);
-    while (!smith.eos()) switch (smith.value(enum { add_data, dup_data })) {
-        .add_data => {
-            const slice = try list.addManyAsSlice(gpa, smith.value(u4));
-            smith.bytes(slice);
-        },
-        .dup_data => {
-            if (list.items.len == 0) continue;
-            if (list.items.len > std.math.maxInt(u32)) return error.SkipZigTest;
-            const len = smith.valueRangeAtMost(u32, 1, @min(32, list.items.len));
-            const off = smith.valueRangeAtMost(u32, 0, @intCast(list.items.len - len));
-            try list.appendSlice(gpa, list.items[off..][0..len]);
-            try std.testing.expectEqualSlices(
-                u8,
-                list.items[off..][0..len],
-                list.items[list.items.len - len ..],
-            );
-        },
-    };
+test {
+    _ = autodoc;
 }

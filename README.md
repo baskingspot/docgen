@@ -1,12 +1,79 @@
 # autodoc
 
-A static HTML generator for Zig API documentation.
+Static HTML API documentation for a Zig package. Point it at a root source
+file; it writes one `index.html` with the public declarations, their doc
+comments, and links to the source on GitHub.
 
-This project is incubating. It is unstable, its API will change, and it is not ready to depend on.
+This is a POC. It reads Zig syntax with `std.zig.Ast`. It does not use the
+compiler's WebAssembly docs viewer, and it ships no JavaScript or
+`sources.tar`.
+
+## Use
+
+`nix develop` provides Zig 0.16 and the tools.
+
+```sh
+zig build run -- --root src/root.zig --out zig-out/docs --title mylib \
+  --repo-url https://github.com/baskingspot/mylib --rev main
+```
+
+`just doc` builds the reference for this repository into `zig-out/docs`.
+`just serve` serves it at <http://127.0.0.1:8000>.
+
+## Build integration
+
+Add autodoc as a dependency, then run its artifact as a build step:
+
+```zig
+const autodoc_dep = b.dependency("autodoc", .{});
+const autodoc = autodoc_dep.artifact("autodoc");
+
+const docs = b.addRunArtifact(autodoc);
+docs.addArgs(&.{
+    "--root",     "src/root.zig",
+    "--title",    "mylib",
+    "--repo-url", "https://github.com/baskingspot/mylib",
+    "--rev",      "main",
+    "--out",
+});
+const api = docs.addOutputDirectoryArg("api");
+const install = b.addInstallDirectory(.{
+    .source_dir = api,
+    .install_dir = .prefix,
+    .install_subdir = "docs",
+});
+const docs_step = b.step("docs", "Generate the API reference");
+docs_step.dependOn(&install.step);
+```
+
+`--out` comes immediately before the output directory. `addOutputDirectoryArg`
+creates that directory and gives the install step a `LazyPath`.
+
+## What it does
+
+- Follows relative `@import("file.zig")` declarations that are public.
+- Collects `pub` declarations and public container members.
+- Renders doc comments as paragraphs, headings, and inline code.
+- Writes one page with an inline stylesheet. The page makes no network
+  requests.
+
+On stdx, run from the stdx checkout with `--root src/root.zig`, it writes
+218 sections in 130 KB. Gzipped, the page is 25 KB.
+
+## Limits
+
+- It is an AST reader. It does not resolve types or aliases, and it does not
+  expand generic type functions. A method inside
+  `pub fn Array(comptime len: usize) type` is not listed.
+- It follows relative imports only. Imports of packages (`@import("std")`,
+  `@import("testingx")`) appear as constants with no members.
+- The page is one file. A large package produces a large page.
+- Source links assume `--root` is relative to the repository root.
 
 ## Work on it
 
-`nix develop` provides the toolchain, and `just ci` runs what CI runs.
+`nix develop` provides the toolchain. `just test`, `just doc`, and `just lint`
+are the commands, and `just ci` runs what CI runs.
 
 ## License
 
