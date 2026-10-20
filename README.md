@@ -58,13 +58,15 @@ creates that directory and gives the install step a `LazyPath`.
   requests.
 
 On stdx, run from the stdx checkout with `--root src/root.zig`, it writes
-218 sections in 130 KB. Gzipped, the page is 25 KB.
+471 sections in 237 KB. Gzipped, the page is 36 KB.
 
 ## Limits
 
-- It is an AST reader. It does not resolve types or aliases, and it does not
-  expand generic type functions. A method inside
-  `pub fn Array(comptime len: usize) type` is not listed.
+- It is an AST reader. It does not resolve types or aliases.
+- It expands a generic type function when the body directly returns a
+  container, such as `pub fn Array(comptime len: usize) type { return struct { ... }; }`.
+  It does not follow a return that names another type, a call, or a
+  conditional.
 - It follows relative imports only. Imports of packages (`@import("std")`,
   `@import("testingx")`) appear as constants with no members.
 - The page is one file. A large package produces a large page.

@@ -31,6 +31,7 @@ const Kind = enum {
     enum_decl,
     union_decl,
     opaque_decl,
+    type_function,
     field,
 
     fn label(kind: Kind) []const u8 {
@@ -43,6 +44,7 @@ const Kind = enum {
             .enum_decl => "enum",
             .union_decl => "union",
             .opaque_decl => "opaque",
+            .type_function => "type fn",
             .field => "field",
         };
     }
@@ -85,6 +87,15 @@ const Generator = struct {
             .limited(16 * 1024 * 1024),
         );
         const source = try gen.allocator.dupeZ(u8, raw);
+        return gen.parseSource(path, source, prefix);
+    }
+
+    fn parseSource(
+        gen: *Generator,
+        path: []const u8,
+        source: [:0]const u8,
+        prefix: []const u8,
+    ) anyerror!FileResult {
         var ast = try Ast.parse(gen.allocator, source, .zig);
         defer ast.deinit(gen.allocator);
 
@@ -131,16 +142,22 @@ const Generator = struct {
                 const signature = try collapsedSource(gen.allocator, ast, proto_node);
                 const docs = try docText(gen.allocator, ast, node);
                 const fqn = try joinFqn(gen.allocator, prefix, name);
+                var kind: Kind = .function;
+                var children: []const Symbol = &.{};
+                if (typeFunctionContainer(ast, node)) |container_node| {
+                    kind = .type_function;
+                    children = try gen.parseMembers(ast, container_node, file_path, fqn);
+                }
                 gen.symbol_count += 1;
                 return .{
                     .name = name,
                     .fqn = fqn,
-                    .kind = .function,
+                    .kind = kind,
                     .signature = signature,
                     .docs = docs,
                     .file = file_path,
                     .line = sourceLine(ast, node),
-                    .children = &.{},
+                    .children = children,
                 };
             },
 
@@ -398,6 +415,27 @@ fn containerKind(ast: *const Ast, node: Ast.Node.Index) ?Kind {
         .keyword_opaque => .opaque_decl,
         else => null,
     };
+}
+
+/// A function that returns `type` and directly returns a container. This is
+/// the common `pub fn Array(...) type { return struct { ... }; }` shape.
+fn typeFunctionContainer(ast: *const Ast, node: Ast.Node.Index) ?Ast.Node.Index {
+    if (ast.nodeTag(node) != .fn_decl) return null;
+    var proto_buf: [1]Ast.Node.Index = undefined;
+    const proto = ast.fullFnProto(&proto_buf, node) orelse return null;
+    const return_node = proto.ast.return_type.unwrap() orelse return null;
+    if (ast.nodeTag(return_node) != .identifier) return null;
+    if (!std.mem.eql(u8, ast.tokenSlice(ast.nodeMainToken(return_node)), "type")) return null;
+
+    const body = ast.nodeData(node).node_and_node[1];
+    var block_buf: [2]Ast.Node.Index = undefined;
+    const statements = ast.blockStatements(&block_buf, body) orelse return null;
+    for (statements) |statement| {
+        if (ast.nodeTag(statement) != .@"return") continue;
+        const expression = ast.nodeData(statement).opt_node.unwrap() orelse continue;
+        if (containerKind(ast, expression) != null) return expression;
+    }
+    return null;
 }
 
 fn importPath(allocator: Allocator, ast: *const Ast, node: Ast.Node.Index) !?[]const u8 {
@@ -680,4 +718,36 @@ test "escaping" {
     defer out.deinit(std.testing.allocator);
     try appendEscaped(&out, std.testing.allocator, "<a & \"b\">");
     try std.testing.expectEqualStrings("&lt;a &amp; &quot;b&quot;&gt;", out.items);
+}
+
+test "type function members are collected" {
+    const source =
+        \\pub fn Array(comptime len: usize) type {
+        \\    return struct {
+        \\        /// The bytes.
+        \\        data: [len]u8,
+        \\
+        \\        /// Make one.
+        \\        pub fn init(data: [len]u8) @This() {
+        \\            return .{ .data = data };
+        \\        }
+        \\    };
+        \\}
+    ;
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var gen: Generator = .{
+        .allocator = arena,
+        .io = std.testing.io,
+        .repo_url = "",
+        .rev = "main",
+        .visited = std.StringHashMap(void).init(arena),
+    };
+    const file = try gen.parseSource("test.zig", source, "");
+    try std.testing.expectEqual(1, file.symbols.len);
+    try std.testing.expectEqual(Kind.type_function, file.symbols[0].kind);
+    try std.testing.expectEqual(2, file.symbols[0].children.len);
+    try std.testing.expectEqualStrings("data", file.symbols[0].children[0].name);
+    try std.testing.expectEqualStrings("init", file.symbols[0].children[1].name);
 }

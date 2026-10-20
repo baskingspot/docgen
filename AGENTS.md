@@ -34,7 +34,8 @@ and `--rev` names the commit or branch.
 ## POC limits
 
 - AST only. No type resolution, alias resolution, or build graph.
-- Generic type functions are not expanded, so their methods are absent.
+- A type function is expanded when its body directly returns a container.
+  A return that names another type, a call, or a conditional is not followed.
 - Relative imports only.
 - One page.
 
