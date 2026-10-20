@@ -76,18 +76,20 @@ creates that directory and gives the install step a `LazyPath`.
 
 ## What it does
 
-- Follows relative `@import("file.zig")` declarations that are public.
+- Follows relative `@import("file.zig")` declarations and conditional
+  aliases such as `pub const pages = if (...) pages_mod else void;`.
 - Collects `pub` declarations and public container members.
 - Renders doc comments as paragraphs, headings, and inline code.
 - Writes one page with an inline stylesheet. The page makes no network
   requests.
 
 On stdx, run from the stdx checkout with `--root src/root.zig`, it writes
-471 sections in 237 KB. Gzipped, the page is 36 KB.
+527 sections in 269 KB. Gzipped, the page is 42 KB.
 
 ## Limits
 
-- It is an AST reader. It does not resolve types or aliases.
+- It is an AST reader. It does not resolve types or type aliases; import
+  aliases are followed.
 - It expands a generic type function when the body directly returns a
   container, such as `pub fn Array(comptime len: usize) type { return struct { ... }; }`.
   It does not follow a return that names another type, a call, or a

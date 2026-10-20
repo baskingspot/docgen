@@ -186,7 +186,7 @@ const Generator = struct {
                         kind = container_kind;
                         signature = try containerSignature(gen.allocator, ast, var_decl, init_node);
                         children = try gen.parseMembers(ast, init_node, file_path, fqn);
-                    } else if (try importPath(gen.allocator, ast, init_node)) |import_path| {
+                    } else if (try resolveInitImport(gen.allocator, ast, init_node, 0)) |import_path| {
                         kind = .namespace;
                         signature = try collapsedBetween(
                             gen.allocator,
@@ -447,6 +447,43 @@ fn importPath(allocator: Allocator, ast: *const Ast, node: Ast.Node.Index) !?[]c
     if (ast.nodeTag(params[0]) != .string_literal) return null;
     const lit = ast.tokenSlice(ast.nodeMainToken(params[0]));
     return std.zig.string_literal.parseAlloc(allocator, lit) catch null;
+}
+
+/// Follow `@import`, a private import alias, or an `if` that selects one.
+/// This is the shape `pub const pages = if (builtin.os.tag == .linux) pages_mod else void;`.
+fn resolveInitImport(
+    allocator: Allocator,
+    ast: *const Ast,
+    node: Ast.Node.Index,
+    depth: usize,
+) !?[]const u8 {
+    if (depth > 8) return null;
+    if (try importPath(allocator, ast, node)) |path| return path;
+
+    switch (ast.nodeTag(node)) {
+        .identifier => {
+            const name = ast.tokenSlice(ast.nodeMainToken(node));
+            for (ast.rootDecls()) |decl_node| {
+                const var_decl = ast.fullVarDecl(decl_node) orelse continue;
+                const name_token = var_decl.ast.mut_token + 1;
+                if (!std.mem.eql(u8, ast.tokenSlice(name_token), name)) continue;
+                const init = var_decl.ast.init_node.unwrap() orelse return null;
+                return resolveInitImport(allocator, ast, init, depth + 1);
+            }
+            return null;
+        },
+        .if_simple, .@"if" => {
+            const if_expr = ast.fullIf(node) orelse return null;
+            if (try resolveInitImport(allocator, ast, if_expr.ast.then_expr, depth + 1)) |path| {
+                return path;
+            }
+            if (if_expr.ast.else_expr.unwrap()) |else_node| {
+                return resolveInitImport(allocator, ast, else_node, depth + 1);
+            }
+            return null;
+        },
+        else => return null,
+    }
 }
 
 fn varSignature(allocator: Allocator, ast: *const Ast, var_decl: Ast.full.VarDecl) ![]const u8 {
@@ -750,4 +787,24 @@ test "type function members are collected" {
     try std.testing.expectEqual(2, file.symbols[0].children.len);
     try std.testing.expectEqualStrings("data", file.symbols[0].children[0].name);
     try std.testing.expectEqualStrings("init", file.symbols[0].children[1].name);
+}
+
+test "conditional import aliases resolve" {
+    const source =
+        \\const pages_mod = @import("pages.zig");
+        \\pub const pages = if (true) pages_mod else void;
+    ;
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var ast = try Ast.parse(arena, source, .zig);
+    defer ast.deinit(arena);
+    try std.testing.expectEqual(0, ast.errors.len);
+
+    const pages_decl = ast.rootDecls()[1];
+    const var_decl = ast.fullVarDecl(pages_decl).?;
+    const init = var_decl.ast.init_node.unwrap().?;
+    const resolved = try resolveInitImport(arena, &ast, init, 0);
+    try std.testing.expect(resolved != null);
+    try std.testing.expectEqualStrings("pages.zig", resolved.?);
 }

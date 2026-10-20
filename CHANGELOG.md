@@ -12,3 +12,8 @@ All notable changes to autodoc are recorded here. The format follows
   GitHub.
 - Type functions that return a container inline, such as
   `pub fn Array(...) type { return struct { ... }; }`, list their members.
+
+### Fixed
+
+- Resolve a public alias that selects a private import in an `if`, such as
+  stdx's `pages` and `slot_ring`.
