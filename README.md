@@ -91,26 +91,36 @@ creates that directory and gives the install step a `LazyPath`.
 
 ## What it does
 
-- Follows relative `@import("file.zig")` declarations and conditional
+- Follows relative `@import("file.zig")` declarations, chained
+  `@import("file.zig").Name` re-exports, local aliases, and conditional
   aliases such as `pub const pages = if (...) pages_mod else void;`.
-- Collects `pub` declarations and public container members.
-- Renders doc comments as paragraphs, headings, and inline code.
+- Collects `pub` declarations and public container members, including
+  tagged unions (`union(enum)` and `union(enum(T))`).
+- Keeps constant and variable signatures with their initializer, so
+  `pub const empty = 0x80;` and `pub const ParseError = error{ ... };` render.
+- Renders doc comments as paragraphs, headings, and inline code. A module's
+  `//!` docs stay with the module; they do not attach to the first declaration.
 - Writes one page with an inline stylesheet, or the model as JSON with
   `--format json`. The page makes no network requests.
 
 On stdx, run from the stdx checkout with `--root src/root.zig`, it writes
-527 sections in 315 KB. Gzipped, the page is 45 KB.
+869 sections in 506 KB. Gzipped, the page is 57 KB.
 
 ## Limits
 
-- It is an AST reader. It does not resolve types or type aliases; import
-  aliases are followed.
-- It expands a generic type function when the body directly returns a
-  container, such as `pub fn Array(comptime len: usize) type { return struct { ... }; }`.
-  It does not follow a return that names another type, a call, or a
-  conditional.
-- It follows relative imports only. Imports of packages (`@import("std")`,
-  `@import("testingx")`) appear as constants with no members.
+- It is an AST reader. It follows relative imports, local aliases, and
+  chained re-exports. It does not resolve package imports (`@import("std")`,
+  `@import("stdx")`), primitives, or foreign types.
+- A type function is expanded when its body returns a container directly,
+  names a local container or type function, calls a local type function, or
+  selects one with `if` or `switch`. An instantiation alias such as
+  `pub const Bytes = buf.Array(u8, 32);` stays a constant, and member
+  signatures keep the callee's parameter names.
+- It follows relative imports only. A package import is a module with no
+  members.
+- An alias that names a sibling declaration inside the same container is not
+  followed. An error set keeps its initializer text but does not list its
+  members.
 - The page is one file. A large package produces a large page.
 - Source links assume `--root` is relative to the repository root.
 

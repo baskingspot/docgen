@@ -21,8 +21,9 @@ command interface: `just test`, `just doc`, `just serve`, `just lint`, and
 ## Design
 
 The POC is deliberately small. It parses source with `std.zig.Ast`, follows
-relative imports, collects public declarations, and writes one HTML page. It
-does not use `lib/zig/docs/wasm`, `sources.tar`, WebAssembly, or JavaScript.
+relative imports and local aliases, collects public declarations, and writes
+one HTML page or `api.json`. It does not use `lib/zig/docs/wasm`,
+`sources.tar`, WebAssembly, or JavaScript.
 
 `src/style.css` is the theme. It is embedded into the page at build time.
 `src/generate.zig` holds the reader and the renderer. `src/main.zig` only
@@ -33,11 +34,16 @@ and `--rev` names the commit or branch.
 
 ## POC limits
 
-- AST only. No type resolution, type-alias resolution, or build graph.
-  Import aliases are followed, including a private alias selected by an `if`.
-- A type function is expanded when its body directly returns a container.
-  A return that names another type, a call, or a conditional is not followed.
-- Relative imports only.
+- AST only. No build graph and no package resolution. Relative imports, local
+  aliases, chained `@import("x.zig").Name` re-exports, and a private import
+  alias selected by an `if` are followed. A package import (`@import("std")`,
+  `@import("stdx")`) is an opaque module.
+- A type function is expanded when its body directly returns a container,
+  names a local container or type function, calls a local type function, or
+  selects one with `if` or `switch`. An instantiation alias such as
+  `pub const Bytes = buf.Array(u8, 32);` stays a constant.
+- An alias to a sibling declaration inside the same container is not followed.
+  An error set keeps its initializer text but does not list its members.
 - One page.
 
 ## Rules
