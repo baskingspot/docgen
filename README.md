@@ -60,10 +60,12 @@ to that repository.
 
 ## Build integration
 
-Add docgen as a dependency, then run its artifact as a build step:
+Add docgen as a dependency, then run its artifact as a build step. A
+consumer that only calls the library gets the module and nothing else; pass
+`.exe = true` to build the command as well:
 
 ```zig
-const docgen_dep = b.dependency("docgen", .{});
+const docgen_dep = b.dependency("docgen", .{ .exe = true });
 const docgen = docgen_dep.artifact("docgen");
 
 const docs = b.addRunArtifact(docgen);
