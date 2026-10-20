@@ -21,6 +21,30 @@ zig build run -- --root src/root.zig --out zig-out/docs --title mylib \
 `just serve` serves it at <http://127.0.0.1:8000>. Set `PORT` to change the port:
 `PORT=9000 just serve`.
 
+### Document another repository
+
+The command above runs from this repository, so it documents this
+repository. Build the binary once, then run it from the checkout you want to
+document:
+
+```sh
+cd ~/code/baskingspot/autodoc
+zig build
+
+cd ~/code/baskingspot/stdx
+../autodoc/zig-out/bin/autodoc \
+  --root src/root.zig \
+  --out /tmp/stdx-api \
+  --title stdx \
+  --repo-url https://github.com/baskingspot/stdx \
+  --rev main
+```
+
+Open `/tmp/stdx-api/index.html` directly, or serve the directory with
+`python3 -m http.server -b 127.0.0.1 -d /tmp/stdx-api 8000`. Run from the
+target repository root so `--root` and the GitHub source paths are relative
+to that repository.
+
 ## Build integration
 
 Add autodoc as a dependency, then run its artifact as a build step:
