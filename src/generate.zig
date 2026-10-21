@@ -6,11 +6,13 @@
 //! resolve types, aliases, or the build graph.
 
 const std = @import("std");
-const model = @import("model.zig");
 const Ast = std.zig.Ast;
+const mem = std.mem;
+const Io = std.Io;
+const Allocator = mem.Allocator;
+const testing = std.testing;
 
-const Allocator = std.mem.Allocator;
-
+const model = @import("model.zig");
 pub const Document = model.Document;
 pub const Format = model.Format;
 pub const Kind = model.Kind;
@@ -108,7 +110,7 @@ const AliasTarget = union(enum) {
 
 const Generator = struct {
     allocator: Allocator,
-    io: std.Io,
+    io: Io,
     /// Parsed files keyed by resolved path. The AST is shared by every alias.
     files: std.StringHashMap(*ParsedFile),
     /// Resolved paths on the current expansion path, for cycle detection.
@@ -120,7 +122,7 @@ const Generator = struct {
     fn loadFile(gen: *Generator, path: []const u8) anyerror!*ParsedFile {
         if (gen.files.get(path)) |file| return file;
 
-        const raw = try std.Io.Dir.cwd().readFileAlloc(
+        const raw = try Io.Dir.cwd().readFileAlloc(
             gen.io,
             path,
             gen.allocator,
@@ -140,7 +142,7 @@ const Generator = struct {
         path: []const u8,
         source: [:0]const u8,
     ) anyerror!*ParsedFile {
-        const ast = try Ast.parse(gen.allocator, source, .zig);
+        const ast: Ast = try .parse(gen.allocator, source, .zig);
         if (ast.errors.len != 0) {
             const tok = ast.tokens.items(.start)[ast.errors[0].token];
             const loc = std.zig.findLineColumn(ast.source, tok + ast.errorOffset(ast.errors[0]));
@@ -153,7 +155,7 @@ const Generator = struct {
             .path = path,
             .ast = ast,
             .docs = try containerDocs(gen.allocator, &ast),
-            .decls = std.StringHashMap(Ast.Node.Index).init(gen.allocator),
+            .decls = .init(gen.allocator),
         };
         for (file.ast.rootDecls()) |node| {
             const name = declName(&file.ast, node) orelse continue;
@@ -179,7 +181,7 @@ const Generator = struct {
 
     fn inStack(gen: *const Generator, path: []const u8) bool {
         for (gen.stack.items) |entry| {
-            if (std.mem.eql(u8, entry, path)) return true;
+            if (mem.eql(u8, entry, path)) return true;
         }
         return false;
     }
@@ -270,7 +272,12 @@ const Generator = struct {
                             .name = name,
                             .fqn = fqn,
                             .kind = container_kind,
-                            .signature = try containerSignature(gen.allocator, ast, var_decl, init_node),
+                            .signature = try containerSignature(
+                                gen.allocator,
+                                ast,
+                                var_decl,
+                                init_node,
+                            ),
                             .docs = docs,
                             .file = file.path,
                             .line = sourceLine(ast, node),
@@ -564,7 +571,11 @@ const Generator = struct {
             .type_function => |type_function| {
                 kind = .type_function;
                 if (docs.len == 0) final_docs = type_function.docs;
-                if (typeFunctionContainer(type_function.file, type_function.node, 0)) |container_node| {
+                if (typeFunctionContainer(
+                    type_function.file,
+                    type_function.node,
+                    0,
+                )) |container_node| {
                     children = try gen.parseAliasMembers(type_function.file, container_node, fqn);
                 }
             },
@@ -603,15 +614,15 @@ const Generator = struct {
     /// and absolute paths stay opaque, as before.
     fn resolveImport(gen: *Generator, file_path: []const u8, import_path: []const u8) !?[]const u8 {
         if (!isRelativeZigPath(import_path)) return null;
-        const dir = std.fs.path.dirname(file_path) orelse ".";
-        const joined = try std.fs.path.join(gen.allocator, &.{ dir, import_path });
-        const resolved = try std.fs.path.resolve(gen.allocator, &.{joined});
+        const dir = Io.Dir.path.dirname(file_path) orelse ".";
+        const joined = try Io.Dir.path.join(gen.allocator, &.{ dir, import_path });
+        const resolved = try Io.Dir.path.resolve(gen.allocator, &.{joined});
         return resolved;
     }
 };
 
 fn isRelativeZigPath(path: []const u8) bool {
-    return std.mem.endsWith(u8, path, ".zig") and !std.fs.path.isAbsolute(path);
+    return mem.endsWith(u8, path, ".zig") and !Io.Dir.path.isAbsolute(path);
 }
 
 fn declName(ast: *const Ast, node: Ast.Node.Index) ?[]const u8 {
@@ -647,7 +658,7 @@ fn findMemberDecl(file: *ParsedFile, container_node: Ast.Node.Index, name: []con
     const container = ast.fullContainerDecl(&buf, container_node) orelse return null;
     for (container.ast.members) |member| {
         const member_name = declName(ast, member) orelse continue;
-        if (std.mem.eql(u8, member_name, name)) {
+        if (mem.eql(u8, member_name, name)) {
             return .{ .file = file, .node = member };
         }
     }
@@ -656,7 +667,7 @@ fn findMemberDecl(file: *ParsedFile, container_node: Ast.Node.Index, name: []con
 
 /// Read a package into the public model. The returned document borrows the
 /// allocator; use an arena if the whole document has the same lifetime.
-pub fn extract(allocator: Allocator, io: std.Io, options: ExtractOptions) !Document {
+pub fn extract(allocator: Allocator, io: Io, options: ExtractOptions) !Document {
     var gen: Generator = .{
         .allocator = allocator,
         .io = io,
@@ -664,7 +675,7 @@ pub fn extract(allocator: Allocator, io: std.Io, options: ExtractOptions) !Docum
         .stack = .empty,
         .alias_stack = .empty,
     };
-    const root_path = try std.fs.path.resolve(allocator, &.{options.root_path});
+    const root_path = try Io.Dir.path.resolve(allocator, &.{options.root_path});
     const root = try gen.parseFile(root_path, "");
 
     var symbols: std.ArrayList(model.Symbol) = .empty;
@@ -712,7 +723,7 @@ fn flatten(
     }
 }
 
-pub fn generate(allocator: Allocator, io: std.Io, options: Options) !Result {
+pub fn generate(allocator: Allocator, io: Io, options: Options) !Result {
     const document = try extract(allocator, io, .{
         .root_path = options.root_path,
         .name = options.title,
@@ -725,9 +736,12 @@ pub fn generate(allocator: Allocator, io: std.Io, options: Options) !Result {
         .json => try writeJson(allocator, &document),
     };
 
-    try std.Io.Dir.cwd().createDirPath(io, options.out_dir);
-    const out_path = try std.fs.path.join(allocator, &.{ options.out_dir, options.format.fileName() });
-    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = out_path, .data = output });
+    try Io.Dir.cwd().createDirPath(io, options.out_dir);
+    const out_path = try Io.Dir.path.join(
+        allocator,
+        &.{ options.out_dir, options.format.fileName() },
+    );
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = out_path, .data = output });
     return .{
         .out_path = out_path,
         .symbols = document.symbols.len,
@@ -795,7 +809,10 @@ pub fn renderHtml(allocator: Allocator, document: *const model.Document) ![]cons
     }
     try renderSections(w, allocator, document);
 
-    try w.appendSlice(allocator, "</main>\n</div>\n<footer class=\"footer\">Generated by docgen from <code>");
+    try w.appendSlice(
+        allocator,
+        "</main>\n</div>\n<footer class=\"footer\">Generated by docgen from <code>",
+    );
     try appendEscaped(w, allocator, document.package.root);
     try w.appendSlice(allocator, "</code>.");
     if (document.symbols.len != 0) {
@@ -808,7 +825,11 @@ pub fn renderHtml(allocator: Allocator, document: *const model.Document) ![]cons
 /// Render the flat symbol list in order. A section stays open while the next
 /// symbols are its descendants, so the DOM keeps the `.members` nesting of
 /// the old recursive renderer.
-fn renderSections(out: *std.ArrayList(u8), allocator: Allocator, document: *const model.Document) !void {
+fn renderSections(
+    out: *std.ArrayList(u8),
+    allocator: Allocator,
+    document: *const model.Document,
+) !void {
     const Open = struct {
         depth: usize,
         has_children: bool,
@@ -934,13 +955,17 @@ fn returnsType(ast: *const Ast, node: Ast.Node.Index) bool {
     const proto = ast.fullFnProto(&proto_buf, node) orelse return false;
     const return_node = proto.ast.return_type.unwrap() orelse return false;
     if (ast.nodeTag(return_node) != .identifier) return false;
-    return std.mem.eql(u8, ast.tokenSlice(ast.nodeMainToken(return_node)), "type");
+    return mem.eql(u8, ast.tokenSlice(ast.nodeMainToken(return_node)), "type");
 }
 
 /// Resolve the container a type function returns. Besides the direct
 /// `return struct { ... };` shape, follow a named container or type function,
 /// a call to a local type function, and `if`/`switch` branches.
-fn typeFunctionContainer(file: *const ParsedFile, node: Ast.Node.Index, depth: usize) ?Ast.Node.Index {
+fn typeFunctionContainer(
+    file: *const ParsedFile,
+    node: Ast.Node.Index,
+    depth: usize,
+) ?Ast.Node.Index {
     if (depth > 8) return null;
     const ast = &file.ast;
     if (ast.nodeTag(node) != .fn_decl) return null;
@@ -958,7 +983,9 @@ fn scanTypeStatements(file: *const ParsedFile, body: Ast.Node.Index, depth: usiz
         switch (ast.nodeTag(statement)) {
             .@"return" => {
                 const expression = ast.nodeData(statement).opt_node.unwrap() orelse continue;
-                if (resolveTypeExpression(file, expression, depth + 1)) |container| return container;
+                if (resolveTypeExpression(file, expression, depth + 1)) |container| {
+                    return container;
+                }
             },
             .block,
             .block_semicolon,
@@ -973,7 +1000,11 @@ fn scanTypeStatements(file: *const ParsedFile, body: Ast.Node.Index, depth: usiz
     return null;
 }
 
-fn resolveTypeExpression(file: *const ParsedFile, node: Ast.Node.Index, depth: usize) ?Ast.Node.Index {
+fn resolveTypeExpression(
+    file: *const ParsedFile,
+    node: Ast.Node.Index,
+    depth: usize,
+) ?Ast.Node.Index {
     if (depth > 8) return null;
     const ast = &file.ast;
     if (containerKind(ast, node) != null) return node;
@@ -1024,7 +1055,11 @@ fn resolveTypeExpression(file: *const ParsedFile, node: Ast.Node.Index, depth: u
     }
 }
 
-fn typeContainerFromDecl(file: *const ParsedFile, node: Ast.Node.Index, depth: usize) ?Ast.Node.Index {
+fn typeContainerFromDecl(
+    file: *const ParsedFile,
+    node: Ast.Node.Index,
+    depth: usize,
+) ?Ast.Node.Index {
     if (depth > 8) return null;
     const ast = &file.ast;
     switch (ast.nodeTag(node)) {
@@ -1060,7 +1095,7 @@ fn importPath(allocator: Allocator, ast: *const Ast, node: Ast.Node.Index) !?[]c
     var buf: [2]Ast.Node.Index = undefined;
     const params = ast.builtinCallParams(&buf, node) orelse return null;
     const main = ast.nodeMainToken(node);
-    if (!std.mem.eql(u8, ast.tokenSlice(main), "@import")) return null;
+    if (!mem.eql(u8, ast.tokenSlice(main), "@import")) return null;
     if (params.len != 1) return null;
     if (ast.nodeTag(params[0]) != .string_literal) return null;
     const lit = ast.tokenSlice(ast.nodeMainToken(params[0]));
@@ -1088,7 +1123,12 @@ fn containerSignature(
     var buf: [2]Ast.Node.Index = undefined;
     const container = ast.fullContainerDecl(&buf, init_node) orelse
         return collapsedBetween(allocator, ast, var_decl.firstToken(), ast.lastToken(init_node));
-    const head = try collapsedBetween(allocator, ast, var_decl.firstToken(), container.ast.main_token);
+    const head = try collapsedBetween(
+        allocator,
+        ast,
+        var_decl.firstToken(),
+        container.ast.main_token,
+    );
 
     var out: std.ArrayList(u8) = .empty;
     try out.appendSlice(allocator, head);
@@ -1112,7 +1152,12 @@ fn collapsedSource(allocator: Allocator, ast: *const Ast, node: Ast.Node.Index) 
     return collapsedBetween(allocator, ast, ast.firstToken(node), ast.lastToken(node));
 }
 
-fn collapsedBetween(allocator: Allocator, ast: *const Ast, first: Ast.TokenIndex, last: Ast.TokenIndex) ![]const u8 {
+fn collapsedBetween(
+    allocator: Allocator,
+    ast: *const Ast,
+    first: Ast.TokenIndex,
+    last: Ast.TokenIndex,
+) ![]const u8 {
     const start = ast.tokenStart(first);
     const end = ast.tokenStart(last) + ast.tokenSlice(last).len;
     return collapseWhitespace(allocator, ast.source[start..end]);
@@ -1160,7 +1205,12 @@ fn docText(allocator: Allocator, ast: *const Ast, node: Ast.Node.Index) ![]const
     return docTokens(allocator, ast, start, first);
 }
 
-fn docTokens(allocator: Allocator, ast: *const Ast, start: Ast.TokenIndex, end: Ast.TokenIndex) ![]const u8 {
+fn docTokens(
+    allocator: Allocator,
+    ast: *const Ast,
+    start: Ast.TokenIndex,
+    end: Ast.TokenIndex,
+) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     var i = start;
     while (i < end) : (i += 1) {
@@ -1175,12 +1225,12 @@ fn docTokens(allocator: Allocator, ast: *const Ast, start: Ast.TokenIndex, end: 
 }
 
 fn renderDocs(out: *std.ArrayList(u8), allocator: Allocator, docs: []const u8) !void {
-    var lines = std.mem.splitScalar(u8, docs, '\n');
+    var lines = mem.splitScalar(u8, docs, '\n');
     var in_para = false;
     var in_code = false;
     while (lines.next()) |line| {
-        const trimmed = std.mem.trim(u8, line, " \t\r");
-        if (std.mem.startsWith(u8, trimmed, "```")) {
+        const trimmed = mem.trim(u8, line, " \t\r");
+        if (mem.startsWith(u8, trimmed, "```")) {
             if (in_para) {
                 try out.appendSlice(allocator, "</p>\n");
                 in_para = false;
@@ -1212,7 +1262,7 @@ fn renderDocs(out: *std.ArrayList(u8), allocator: Allocator, docs: []const u8) !
             }
             var level: usize = 0;
             while (level < trimmed.len and trimmed[level] == '#') : (level += 1) {}
-            const text = std.mem.trimStart(u8, trimmed[level..], " ");
+            const text = mem.trimStart(u8, trimmed[level..], " ");
             try out.print(allocator, "<h4>", .{});
             try appendEscaped(out, allocator, text);
             try out.appendSlice(allocator, "</h4>\n");
@@ -1234,7 +1284,7 @@ fn renderInline(out: *std.ArrayList(u8), allocator: Allocator, line: []const u8)
     var i: usize = 0;
     while (i < line.len) {
         if (line[i] == '`') {
-            if (std.mem.findScalarPos(u8, line, i + 1, '`')) |end| {
+            if (mem.findScalarPos(u8, line, i + 1, '`')) |end| {
                 try out.appendSlice(allocator, "<code>");
                 try appendEscaped(out, allocator, line[i + 1 .. end]);
                 try out.appendSlice(allocator, "</code>");
@@ -1263,31 +1313,33 @@ fn appendEscapedChar(out: *std.ArrayList(u8), allocator: Allocator, c: u8) !void
 }
 
 fn stripScheme(url: []const u8) []const u8 {
-    if (std.mem.startsWith(u8, url, "https://")) return url["https://".len..];
-    if (std.mem.startsWith(u8, url, "http://")) return url["http://".len..];
+    if (mem.startsWith(u8, url, "https://")) return url["https://".len..];
+    if (mem.startsWith(u8, url, "http://")) return url["http://".len..];
     return url;
 }
 
 test "docs render paragraphs, code, and headings" {
     var out: std.ArrayList(u8) = .empty;
-    defer out.deinit(std.testing.allocator);
-    try renderDocs(&out, std.testing.allocator,
+    defer out.deinit(testing.allocator);
+    try renderDocs(&out, testing.allocator,
         \\First paragraph with `code`.
         \\
         \\## Details
         \\
         \\Second paragraph.
     );
-    try std.testing.expect(std.mem.indexOf(u8, out.items, "<p>First paragraph with <code>code</code>.</p>") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out.items, "<h4>Details</h4>") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out.items, "<p>Second paragraph.</p>") != null);
+    try testing.expect(
+        mem.indexOf(u8, out.items, "<p>First paragraph with <code>code</code>.</p>") != null,
+    );
+    try testing.expect(mem.indexOf(u8, out.items, "<h4>Details</h4>") != null);
+    try testing.expect(mem.indexOf(u8, out.items, "<p>Second paragraph.</p>") != null);
 }
 
 test "escaping" {
     var out: std.ArrayList(u8) = .empty;
-    defer out.deinit(std.testing.allocator);
-    try appendEscaped(&out, std.testing.allocator, "<a & \"b\">");
-    try std.testing.expectEqualStrings("&lt;a &amp; &quot;b&quot;&gt;", out.items);
+    defer out.deinit(testing.allocator);
+    try appendEscaped(&out, testing.allocator, "<a & \"b\">");
+    try testing.expectEqualStrings("&lt;a &amp; &quot;b&quot;&gt;", out.items);
 }
 
 test "type function members are collected" {
@@ -1304,23 +1356,23 @@ test "type function members are collected" {
         \\    };
         \\}
     ;
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
     var gen: Generator = .{
         .allocator = arena,
-        .io = std.testing.io,
+        .io = testing.io,
         .files = std.StringHashMap(*ParsedFile).init(arena),
         .stack = .empty,
         .alias_stack = .empty,
     };
     const file = try gen.parseSource("test.zig", source);
     const symbols = try gen.parseDecls(file, "");
-    try std.testing.expectEqual(1, symbols.len);
-    try std.testing.expectEqual(Kind.type_function, symbols[0].kind);
-    try std.testing.expectEqual(2, symbols[0].children.len);
-    try std.testing.expectEqualStrings("data", symbols[0].children[0].name);
-    try std.testing.expectEqualStrings("init", symbols[0].children[1].name);
+    try testing.expectEqual(1, symbols.len);
+    try testing.expectEqual(Kind.type_function, symbols[0].kind);
+    try testing.expectEqual(2, symbols[0].children.len);
+    try testing.expectEqualStrings("data", symbols[0].children[0].name);
+    try testing.expectEqualStrings("init", symbols[0].children[1].name);
 }
 
 test "conditional import aliases resolve" {
@@ -1328,12 +1380,12 @@ test "conditional import aliases resolve" {
         \\const pages_mod = @import("pages.zig");
         \\pub const pages = if (true) pages_mod else void;
     ;
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
     var gen: Generator = .{
         .allocator = arena,
-        .io = std.testing.io,
+        .io = testing.io,
         .files = std.StringHashMap(*ParsedFile).init(arena),
         .stack = .empty,
         .alias_stack = .empty,
@@ -1347,7 +1399,7 @@ test "conditional import aliases resolve" {
     switch (target) {
         .decl => |ref| {
             const module_decl = ref.file.ast.fullVarDecl(ref.node).?;
-            try std.testing.expectEqualStrings(
+            try testing.expectEqualStrings(
                 "pages_mod",
                 ref.file.ast.tokenSlice(module_decl.ast.mut_token + 1),
             );
@@ -1544,7 +1596,7 @@ const expected_fixture_symbols = [_]ExpectedSymbol{
 };
 
 fn extractFixture(allocator: Allocator) !Document {
-    return extract(allocator, std.testing.io, .{
+    return extract(allocator, testing.io, .{
         .root_path = fixture_root,
         .name = "tiny",
         .repo_url = "https://example.com/tiny",
@@ -1553,92 +1605,93 @@ fn extractFixture(allocator: Allocator) !Document {
 }
 
 fn extractRoot(allocator: Allocator, root: []const u8) !Document {
-    return extract(allocator, std.testing.io, .{
+    return extract(allocator, testing.io, .{
         .root_path = root,
-        .name = std.fs.path.stem(root),
+        .name = Io.Dir.path.stem(root),
     });
 }
 
 fn expectSymbols(expected: []const ExpectedSymbol, document: *const Document) !void {
-    try std.testing.expectEqual(expected.len, document.symbols.len);
+    try testing.expectEqual(expected.len, document.symbols.len);
     for (expected, document.symbols) |want, got| {
-        try std.testing.expectEqualStrings(want.name, got.name);
-        try std.testing.expectEqualStrings(want.fqn, got.fqn);
-        try std.testing.expectEqual(want.kind, got.kind);
-        try std.testing.expectEqual(want.depth, got.depth);
+        try testing.expectEqualStrings(want.name, got.name);
+        try testing.expectEqualStrings(want.fqn, got.fqn);
+        try testing.expectEqual(want.kind, got.kind);
+        try testing.expectEqual(want.depth, got.depth);
         if (want.parent) |parent| {
-            try std.testing.expectEqualStrings(parent, got.parent.?);
+            try testing.expectEqualStrings(parent, got.parent.?);
         } else {
-            try std.testing.expect(got.parent == null);
+            try testing.expect(got.parent == null);
         }
-        try std.testing.expectEqualStrings(want.signature, got.signature);
-        try std.testing.expectEqualStrings(want.docs, got.docs);
-        try std.testing.expectEqualStrings(want.file, got.file);
-        try std.testing.expectEqual(want.line, got.line);
+        try testing.expectEqualStrings(want.signature, got.signature);
+        try testing.expectEqualStrings(want.docs, got.docs);
+        try testing.expectEqualStrings(want.file, got.file);
+        try testing.expectEqual(want.line, got.line);
     }
 
     // The flattened tree must stay unique, and every parent must be the
     // immediately preceding depth.
     for (document.symbols, 0..) |symbol, i| {
         for (document.symbols[0..i]) |earlier| {
-            if (std.mem.eql(u8, symbol.fqn, earlier.fqn)) return error.DuplicateFqn;
+            if (mem.eql(u8, symbol.fqn, earlier.fqn)) return error.DuplicateFqn;
         }
         if (symbol.depth == 0) {
-            try std.testing.expect(symbol.parent == null);
+            try testing.expect(symbol.parent == null);
             continue;
         }
         const parent_fqn = symbol.parent orelse return error.MissingParent;
         var found = false;
         for (document.symbols[0..i]) |earlier| {
-            if (!std.mem.eql(u8, earlier.fqn, parent_fqn)) continue;
-            try std.testing.expectEqual(symbol.depth - 1, earlier.depth);
+            if (!mem.eql(u8, earlier.fqn, parent_fqn)) continue;
+            try testing.expectEqual(symbol.depth - 1, earlier.depth);
             found = true;
             break;
         }
-        try std.testing.expect(found);
+        try testing.expect(found);
     }
 }
 
 test "extract fixture into a flat pre-order list" {
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
 
     const document = try extractFixture(arena);
 
-    try std.testing.expectEqual(@as(u32, 1), document.schema_version);
-    try std.testing.expectEqualStrings("docgen", document.generator.name);
-    try std.testing.expectEqualStrings("0.0.0", document.generator.version);
-    try std.testing.expectEqualStrings("tiny", document.package.name);
-    try std.testing.expectEqualStrings(fixture_root, document.package.root);
-    try std.testing.expectEqualStrings("https://example.com/tiny", document.package.repo_url);
-    try std.testing.expectEqualStrings("v1", document.package.rev);
-    try std.testing.expectEqualStrings(
-        "Tiny fixture package.\n\nIt exercises the reader.\n\n## Layout\n\nThe modules live beside this file.\n",
+    try testing.expectEqual(@as(u32, 1), document.schema_version);
+    try testing.expectEqualStrings("docgen", document.generator.name);
+    try testing.expectEqualStrings("0.0.0", document.generator.version);
+    try testing.expectEqualStrings("tiny", document.package.name);
+    try testing.expectEqualStrings(fixture_root, document.package.root);
+    try testing.expectEqualStrings("https://example.com/tiny", document.package.repo_url);
+    try testing.expectEqualStrings("v1", document.package.rev);
+    try testing.expectEqualStrings(
+        "Tiny fixture package.\n\nIt exercises the reader.\n\n" ++
+            "## Layout\n\nThe modules live beside this file.\n",
         document.module_docs,
     );
-    try std.testing.expectEqual(0, document.diagnostics.len);
+    try testing.expectEqual(0, document.diagnostics.len);
 
-    try std.testing.expectEqual(expected_fixture_symbols.len, document.symbols.len);
+    try testing.expectEqual(expected_fixture_symbols.len, document.symbols.len);
     for (expected_fixture_symbols, document.symbols) |want, got| {
-        try std.testing.expectEqualStrings(want.name, got.name);
-        try std.testing.expectEqualStrings(want.fqn, got.fqn);
-        try std.testing.expectEqual(want.kind, got.kind);
-        try std.testing.expectEqual(want.depth, got.depth);
+        try testing.expectEqualStrings(want.name, got.name);
+        try testing.expectEqualStrings(want.fqn, got.fqn);
+        try testing.expectEqual(want.kind, got.kind);
+        try testing.expectEqual(want.depth, got.depth);
         if (want.parent) |parent| {
-            try std.testing.expectEqualStrings(parent, got.parent.?);
+            try testing.expectEqualStrings(parent, got.parent.?);
         } else {
-            try std.testing.expect(got.parent == null);
+            try testing.expect(got.parent == null);
         }
-        try std.testing.expectEqualStrings(want.signature, got.signature);
-        try std.testing.expectEqualStrings(want.docs, got.docs);
-        try std.testing.expectEqualStrings(want.file, got.file);
-        try std.testing.expectEqual(want.line, got.line);
+        try testing.expectEqualStrings(want.signature, got.signature);
+        try testing.expectEqualStrings(want.docs, got.docs);
+        try testing.expectEqualStrings(want.file, got.file);
+        try testing.expectEqual(want.line, got.line);
     }
 }
 
 test "writeJson emits schema v1 with raw markdown" {
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
 
@@ -1655,83 +1708,84 @@ test "writeJson emits schema v1 with raw markdown" {
         "symbols",
         "diagnostics",
     };
-    try std.testing.expectEqual(top_level_keys.len, root.count());
+    try testing.expectEqual(top_level_keys.len, root.count());
     var top_level = root.iterator();
     for (top_level_keys) |key| {
         const entry = top_level.next() orelse return error.TestUnexpectedResult;
-        try std.testing.expectEqualStrings(key, entry.key_ptr.*);
+        try testing.expectEqualStrings(key, entry.key_ptr.*);
     }
-    try std.testing.expect(top_level.next() == null);
+    try testing.expect(top_level.next() == null);
 
-    try std.testing.expectEqual(@as(i64, 1), root.get("schema_version").?.integer);
+    try testing.expectEqual(@as(i64, 1), root.get("schema_version").?.integer);
 
     const generator = root.get("generator").?.object;
-    try std.testing.expectEqual(@as(usize, 2), generator.count());
-    try std.testing.expectEqualStrings("docgen", generator.get("name").?.string);
-    try std.testing.expectEqualStrings("0.0.0", generator.get("version").?.string);
+    try testing.expectEqual(@as(usize, 2), generator.count());
+    try testing.expectEqualStrings("docgen", generator.get("name").?.string);
+    try testing.expectEqualStrings("0.0.0", generator.get("version").?.string);
 
     const package = root.get("package").?.object;
-    try std.testing.expectEqual(@as(usize, 4), package.count());
-    try std.testing.expectEqualStrings("tiny", package.get("name").?.string);
-    try std.testing.expectEqualStrings(fixture_root, package.get("root").?.string);
-    try std.testing.expectEqualStrings("https://example.com/tiny", package.get("repo_url").?.string);
-    try std.testing.expectEqualStrings("v1", package.get("rev").?.string);
+    try testing.expectEqual(@as(usize, 4), package.count());
+    try testing.expectEqualStrings("tiny", package.get("name").?.string);
+    try testing.expectEqualStrings(fixture_root, package.get("root").?.string);
+    try testing.expectEqualStrings("https://example.com/tiny", package.get("repo_url").?.string);
+    try testing.expectEqualStrings("v1", package.get("rev").?.string);
 
-    try std.testing.expectEqualStrings(
-        "Tiny fixture package.\n\nIt exercises the reader.\n\n## Layout\n\nThe modules live beside this file.\n",
+    try testing.expectEqualStrings(
+        "Tiny fixture package.\n\nIt exercises the reader.\n\n" ++
+            "## Layout\n\nThe modules live beside this file.\n",
         root.get("module_docs").?.string,
     );
-    try std.testing.expectEqual(@as(usize, 0), root.get("diagnostics").?.array.items.len);
+    try testing.expectEqual(@as(usize, 0), root.get("diagnostics").?.array.items.len);
 
     const symbols = root.get("symbols").?.array.items;
-    try std.testing.expectEqual(expected_fixture_symbols.len, symbols.len);
+    try testing.expectEqual(expected_fixture_symbols.len, symbols.len);
 
     const symbol_keys = [_][]const u8{
         "name", "fqn", "kind", "depth", "parent", "signature", "docs", "file", "line",
     };
     const point = symbols[0].object;
-    try std.testing.expectEqual(symbol_keys.len, point.count());
+    try testing.expectEqual(symbol_keys.len, point.count());
     var point_fields = point.iterator();
     for (symbol_keys) |key| {
         const entry = point_fields.next() orelse return error.TestUnexpectedResult;
-        try std.testing.expectEqualStrings(key, entry.key_ptr.*);
+        try testing.expectEqualStrings(key, entry.key_ptr.*);
     }
-    try std.testing.expect(point_fields.next() == null);
+    try testing.expect(point_fields.next() == null);
 
-    try std.testing.expectEqualStrings("Point", point.get("name").?.string);
-    try std.testing.expectEqualStrings("Point", point.get("fqn").?.string);
-    try std.testing.expectEqualStrings("struct", point.get("kind").?.string);
-    try std.testing.expectEqual(@as(i64, 0), point.get("depth").?.integer);
+    try testing.expectEqualStrings("Point", point.get("name").?.string);
+    try testing.expectEqualStrings("Point", point.get("fqn").?.string);
+    try testing.expectEqualStrings("struct", point.get("kind").?.string);
+    try testing.expectEqual(@as(i64, 0), point.get("depth").?.integer);
     switch (point.get("parent").?) {
         .null => {},
         else => return error.TestUnexpectedResult,
     }
-    try std.testing.expectEqualStrings("pub const Point = struct", point.get("signature").?.string);
+    try testing.expectEqualStrings("pub const Point = struct", point.get("signature").?.string);
     // The JSON keeps markdown as written, including the trailing newline.
-    try std.testing.expectEqualStrings("A point in the plane.\n", point.get("docs").?.string);
-    try std.testing.expectEqualStrings(fixture_root, point.get("file").?.string);
-    try std.testing.expectEqual(@as(i64, 12), point.get("line").?.integer);
+    try testing.expectEqualStrings("A point in the plane.\n", point.get("docs").?.string);
+    try testing.expectEqualStrings(fixture_root, point.get("file").?.string);
+    try testing.expectEqual(@as(i64, 12), point.get("line").?.integer);
 
     const magnitude = symbols[3].object;
-    try std.testing.expectEqualStrings("Point.magnitude", magnitude.get("fqn").?.string);
-    try std.testing.expectEqualStrings("function", magnitude.get("kind").?.string);
-    try std.testing.expectEqual(@as(i64, 1), magnitude.get("depth").?.integer);
-    try std.testing.expectEqualStrings("Point", magnitude.get("parent").?.string);
-    try std.testing.expectEqualStrings("Distance from the origin.\n", magnitude.get("docs").?.string);
+    try testing.expectEqualStrings("Point.magnitude", magnitude.get("fqn").?.string);
+    try testing.expectEqualStrings("function", magnitude.get("kind").?.string);
+    try testing.expectEqual(@as(i64, 1), magnitude.get("depth").?.integer);
+    try testing.expectEqualStrings("Point", magnitude.get("parent").?.string);
+    try testing.expectEqualStrings("Distance from the origin.\n", magnitude.get("docs").?.string);
 
     const add = symbols[11].object;
-    try std.testing.expectEqualStrings("module", symbols[10].object.get("kind").?.string);
-    try std.testing.expectEqualStrings(fixture_internal, add.get("file").?.string);
-    try std.testing.expectEqual(@as(i64, 4), add.get("line").?.integer);
-    try std.testing.expectEqualStrings("internal", add.get("parent").?.string);
+    try testing.expectEqualStrings("module", symbols[10].object.get("kind").?.string);
+    try testing.expectEqualStrings(fixture_internal, add.get("file").?.string);
+    try testing.expectEqual(@as(i64, 4), add.get("line").?.integer);
+    try testing.expectEqualStrings("internal", add.get("parent").?.string);
 
     for (expected_fixture_symbols, symbols) |want, symbol| {
-        try std.testing.expectEqualStrings(@tagName(want.kind), symbol.object.get("kind").?.string);
+        try testing.expectEqualStrings(@tagName(want.kind), symbol.object.get("kind").?.string);
     }
 }
 
 test "JSON round-trips into the model and renders the same HTML" {
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
 
@@ -1739,16 +1793,16 @@ test "JSON round-trips into the model and renders the same HTML" {
     const json = try writeJson(arena, &document);
     const parsed = try std.json.parseFromSlice(model.Document, arena, json, .{});
 
-    try std.testing.expectEqualStrings(document.module_docs, parsed.value.module_docs);
-    try std.testing.expectEqual(document.symbols.len, parsed.value.symbols.len);
+    try testing.expectEqualStrings(document.module_docs, parsed.value.module_docs);
+    try testing.expectEqual(document.symbols.len, parsed.value.symbols.len);
 
     const direct = try renderHtml(arena, &document);
     const round_trip = try renderHtml(arena, &parsed.value);
-    try std.testing.expectEqualStrings(direct, round_trip);
+    try testing.expectEqualStrings(direct, round_trip);
 }
 
 test "renderHtml escapes <, &, and quotes" {
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
 
@@ -1778,16 +1832,16 @@ test "renderHtml escapes <, &, and quotes" {
 
     const html = try renderHtml(arena, &document);
 
-    try std.testing.expect(std.mem.indexOf(u8, html, "<tag>") == null);
-    try std.testing.expect(std.mem.indexOf(u8, html, "less<") == null);
-    try std.testing.expect(std.mem.indexOf(u8, html, "<root>") == null);
-    try std.testing.expect(std.mem.indexOf(u8, html, "&lt;tag&gt;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, html, "less&lt;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, html, "&lt;root&gt;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, html, "a&lt;b &amp; &quot;c&quot;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, html, "a=1&amp;b=2") != null);
-    try std.testing.expect(std.mem.indexOf(u8, html, "&quot;quotes&quot;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, html, "&quot;more&quot;") != null);
+    try testing.expect(mem.indexOf(u8, html, "<tag>") == null);
+    try testing.expect(mem.indexOf(u8, html, "less<") == null);
+    try testing.expect(mem.indexOf(u8, html, "<root>") == null);
+    try testing.expect(mem.indexOf(u8, html, "&lt;tag&gt;") != null);
+    try testing.expect(mem.indexOf(u8, html, "less&lt;") != null);
+    try testing.expect(mem.indexOf(u8, html, "&lt;root&gt;") != null);
+    try testing.expect(mem.indexOf(u8, html, "a&lt;b &amp; &quot;c&quot;") != null);
+    try testing.expect(mem.indexOf(u8, html, "a=1&amp;b=2") != null);
+    try testing.expect(mem.indexOf(u8, html, "&quot;quotes&quot;") != null);
+    try testing.expect(mem.indexOf(u8, html, "&quot;more&quot;") != null);
 }
 
 const expected_tagged = [_]ExpectedSymbol{
@@ -1970,7 +2024,7 @@ const expected_tagged = [_]ExpectedSymbol{
 };
 
 test "tagged unions expand fields and keep the tag argument" {
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const document = try extractRoot(arena_state.allocator(), fixture_tagged);
     try expectSymbols(&expected_tagged, &document);
@@ -2068,7 +2122,7 @@ const expected_signatures = [_]ExpectedSymbol{
 };
 
 test "constant signatures keep their type and initializer" {
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const document = try extractRoot(arena_state.allocator(), fixture_signatures);
     try expectSymbols(&expected_signatures, &document);
@@ -2111,7 +2165,7 @@ const expected_chained = [_]ExpectedSymbol{
 };
 
 test "chained imports resolve the selected declaration" {
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const document = try extractRoot(arena_state.allocator(), fixture_chained);
     try expectSymbols(&expected_chained, &document);
@@ -2253,7 +2307,7 @@ const expected_alias = [_]ExpectedSymbol{
 };
 
 test "local aliases keep the call site and copy the target members" {
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const document = try extractRoot(arena_state.allocator(), fixture_alias);
     try expectSymbols(&expected_alias, &document);
@@ -2285,7 +2339,7 @@ const expected_fnvalue = [_]ExpectedSymbol{
 };
 
 test "function values use the callee signature" {
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const document = try extractRoot(arena_state.allocator(), fixture_fnvalue);
     try expectSymbols(&expected_fnvalue, &document);
@@ -2328,10 +2382,10 @@ const expected_docs = [_]ExpectedSymbol{
 };
 
 test "module docs stay at module level" {
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const document = try extractRoot(arena_state.allocator(), fixture_docs);
-    try std.testing.expectEqualStrings("Module docs.\nSecond line.\n", document.module_docs);
+    try testing.expectEqualStrings("Module docs.\nSecond line.\n", document.module_docs);
     try expectSymbols(&expected_docs, &document);
 }
 
@@ -2405,7 +2459,7 @@ const expected_dupes = [_]ExpectedSymbol{
 };
 
 test "two aliases of one file both expand" {
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const document = try extractRoot(arena_state.allocator(), fixture_dupes);
     try expectSymbols(&expected_dupes, &document);
@@ -2481,7 +2535,7 @@ const expected_cycle = [_]ExpectedSymbol{
 };
 
 test "a cycle terminates at one empty back edge" {
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const document = try extractRoot(arena_state.allocator(), fixture_cycle);
     try expectSymbols(&expected_cycle, &document);
@@ -2678,7 +2732,7 @@ const expected_typefn = [_]ExpectedSymbol{
 };
 
 test "type functions follow named, called, and conditional returns" {
-    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const document = try extractRoot(arena_state.allocator(), fixture_typefn);
     try expectSymbols(&expected_typefn, &document);

@@ -5,7 +5,6 @@
 //! consume the model and do not influence it.
 
 const std = @import("std");
-
 const Allocator = std.mem.Allocator;
 
 /// Name of the tool recorded in `Document.generator`.

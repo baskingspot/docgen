@@ -2,9 +2,16 @@
 //! through the `docgen` library.
 
 const std = @import("std");
+const Io = std.Io;
+const testing = std.testing;
+const meta = std.meta;
+const Allocator = std.mem.Allocator;
+
 const cli = @import("cli");
 const docgen = @import("docgen");
 const stdx = @import("stdx");
+const stderr = stdx.stdio.err;
+const stdout = stdx.stdio.out;
 
 const usage =
     \\Usage: docgen --root PATH --out DIR [options]
@@ -36,7 +43,7 @@ fn logFn(
 ) void {
     _ = level;
     _ = scope;
-    stdx.stdio.err.print("docgen: " ++ format ++ "\n", args);
+    stderr.print("docgen: " ++ format ++ "\n", args);
 }
 
 const Config = struct {
@@ -56,7 +63,7 @@ const UsageError = union(enum) {
     missing_root,
     missing_out,
 
-    pub fn format(self: UsageError, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    pub fn format(self: UsageError, writer: *Io.Writer) Io.Writer.Error!void {
         switch (self) {
             .missing_value => |opt| try writer.print("{f} needs a value", .{opt}),
             .unknown_option => |opt| try writer.print("unknown option '{f}'", .{opt}),
@@ -113,7 +120,7 @@ fn parse(args: *cli.Args) ParseResult {
             } else if (opt.is("format", null)) {
                 const value = args.takeValue(opt) orelse
                     return .{ .invalid = .{ .missing_value = opt } };
-                format = std.meta.stringToEnum(docgen.Format, value) orelse
+                format = meta.stringToEnum(docgen.Format, value) orelse
                     return .{ .invalid = .{ .unknown_format = value } };
             } else {
                 return .{ .invalid = .{ .unknown_option = opt } };
@@ -136,40 +143,37 @@ fn parse(args: *cli.Args) ParseResult {
 pub fn main(init: std.process.Init) u8 {
     defer stdx.stdio.flush();
 
-    const allocator = init.arena.allocator();
-    var args = cli.Args.initAllocator(init.minimal.args, allocator) catch |err| {
-        stdx.stdio.err.print("docgen: cannot read arguments: {s}\n", .{@errorName(err)});
-        return 1;
-    };
+    const arena = init.arena.allocator();
+    var args: cli.Args = .init(init.minimal.args);
     defer args.deinit();
 
     switch (parse(&args)) {
         .help => {
-            stdx.stdio.out.writeAll(usage);
+            stdout.writeAll(usage);
             return 0;
         },
         .version => {
-            stdx.stdio.out.print("{s} {s}\n", .{
+            stdout.print("{s} {s}\n", .{
                 docgen.model.generator_name,
                 docgen.model.generator_version,
             });
             return 0;
         },
         .invalid => |err| {
-            stdx.stdio.err.print("docgen: {f}\n\n{s}", .{ err, usage });
+            stderr.print("docgen: {f}\n\n{s}", .{ err, usage });
             return 2;
         },
-        .run => |config| return run(allocator, init.io, config),
+        .run => |config| return run(arena, init.io, config),
     }
 }
 
-fn run(allocator: std.mem.Allocator, io: std.Io, config: Config) u8 {
-    const title = config.title orelse std.fs.path.stem(config.root);
+fn run(arena: Allocator, io: Io, config: Config) u8 {
+    const title = config.title orelse Io.Dir.path.stem(config.root);
 
     // Do the phases here instead of calling `docgen.generate` so a failure can
     // name the path that produced it: the root file for reads and parsing, and
     // the output file for writes.
-    const document = docgen.extract(allocator, io, .{
+    const document = docgen.extract(arena, io, .{
         .root_path = config.root,
         .name = title,
         .repo_url = config.repo_url,
@@ -182,29 +186,29 @@ fn run(allocator: std.mem.Allocator, io: std.Io, config: Config) u8 {
     };
 
     const output = switch (config.format) {
-        .html => docgen.renderHtml(allocator, &document),
-        .json => docgen.writeJson(allocator, &document),
+        .html => docgen.renderHtml(arena, &document),
+        .json => docgen.writeJson(arena, &document),
     } catch |err| return fail("render", err);
 
-    std.Io.Dir.cwd().createDirPath(io, config.out) catch |err| return fail(config.out, err);
-    const out_path = std.fs.path.join(allocator, &.{
+    Io.Dir.cwd().createDirPath(io, config.out) catch |err| return fail(config.out, err);
+    const out_path = Io.Dir.path.join(arena, &.{
         config.out,
         config.format.fileName(),
     }) catch |err| return fail(config.out, err);
-    std.Io.Dir.cwd().writeFile(io, .{ .sub_path = out_path, .data = output }) catch |err|
+    Io.Dir.cwd().writeFile(io, .{ .sub_path = out_path, .data = output }) catch |err|
         return fail(out_path, err);
 
-    stdx.stdio.out.print("wrote {s} ({d} symbols)\n", .{ out_path, document.symbols.len });
+    stdout.print("wrote {s} ({d} symbols)\n", .{ out_path, document.symbols.len });
     return 0;
 }
 
 fn fail(path: []const u8, err: anyerror) u8 {
-    stdx.stdio.err.print("docgen: {s}: {s}\n", .{ path, @errorName(err) });
+    stderr.print("docgen: {s}: {s}\n", .{ path, @errorName(err) });
     return 1;
 }
 
-fn expectTag(expected: std.meta.Tag(ParseResult), result: ParseResult) !void {
-    try std.testing.expectEqual(expected, std.meta.activeTag(result));
+fn expectTag(expected: meta.Tag(ParseResult), result: ParseResult) !void {
+    try testing.expectEqual(expected, meta.activeTag(result));
 }
 
 fn expectRun(result: ParseResult) !Config {
@@ -216,20 +220,20 @@ fn expectRun(result: ParseResult) !Config {
 
 fn expectMessage(expected: []const u8, err: UsageError) !void {
     var buf: [256]u8 = undefined;
-    var writer: std.Io.Writer = .fixed(&buf);
+    var writer: Io.Writer = .fixed(&buf);
     try err.format(&writer);
-    try std.testing.expectEqualStrings(expected, writer.buffered());
+    try testing.expectEqualStrings(expected, writer.buffered());
 }
 
 test "defaults apply when only the required flags are set" {
     var args: cli.Args = .fromSlice(&.{ "--root", "src/root.zig", "--out", "zig-out/docs" });
     const config = try expectRun(parse(&args));
-    try std.testing.expectEqualStrings("src/root.zig", config.root);
-    try std.testing.expectEqualStrings("zig-out/docs", config.out);
-    try std.testing.expectEqual(@as(?[]const u8, null), config.title);
-    try std.testing.expectEqualStrings("", config.repo_url);
-    try std.testing.expectEqualStrings("main", config.rev);
-    try std.testing.expectEqual(docgen.Format.html, config.format);
+    try testing.expectEqualStrings("src/root.zig", config.root);
+    try testing.expectEqualStrings("zig-out/docs", config.out);
+    try testing.expectEqual(@as(?[]const u8, null), config.title);
+    try testing.expectEqualStrings("", config.repo_url);
+    try testing.expectEqualStrings("main", config.rev);
+    try testing.expectEqual(docgen.Format.html, config.format);
 }
 
 test "every flag parses, including --format json" {
@@ -242,15 +246,15 @@ test "every flag parses, including --format json" {
         "--format",   "json",
     });
     const config = try expectRun(parse(&args));
-    try std.testing.expectEqualStrings("src/root.zig", config.root);
-    try std.testing.expectEqualStrings("zig-out/api", config.out);
-    try std.testing.expectEqualStrings("mylib", config.title orelse "");
-    try std.testing.expectEqualStrings(
+    try testing.expectEqualStrings("src/root.zig", config.root);
+    try testing.expectEqualStrings("zig-out/api", config.out);
+    try testing.expectEqualStrings("mylib", config.title orelse "");
+    try testing.expectEqualStrings(
         "https://github.com/baskingspot/mylib",
         config.repo_url,
     );
-    try std.testing.expectEqualStrings("v1.2.3", config.rev);
-    try std.testing.expectEqual(docgen.Format.json, config.format);
+    try testing.expectEqualStrings("v1.2.3", config.rev);
+    try testing.expectEqual(docgen.Format.json, config.format);
 }
 
 test "--name=value forms parse like separate values" {
@@ -263,12 +267,12 @@ test "--name=value forms parse like separate values" {
         "--format=json",
     });
     const config = try expectRun(parse(&args));
-    try std.testing.expectEqualStrings("src/root.zig", config.root);
-    try std.testing.expectEqualStrings("zig-out/api", config.out);
-    try std.testing.expectEqualStrings("mylib", config.title orelse "");
-    try std.testing.expectEqualStrings("https://example.com/mylib", config.repo_url);
-    try std.testing.expectEqualStrings("dev", config.rev);
-    try std.testing.expectEqual(docgen.Format.json, config.format);
+    try testing.expectEqualStrings("src/root.zig", config.root);
+    try testing.expectEqualStrings("zig-out/api", config.out);
+    try testing.expectEqualStrings("mylib", config.title orelse "");
+    try testing.expectEqualStrings("https://example.com/mylib", config.repo_url);
+    try testing.expectEqualStrings("dev", config.rev);
+    try testing.expectEqual(docgen.Format.json, config.format);
 }
 
 test "help and version short-circuit the required flags" {
