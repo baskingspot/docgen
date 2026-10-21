@@ -19,16 +19,17 @@ pub fn build(b: *std.Build) void {
     const want_exe = is_root or (b.option(bool, "exe", "Build the docgen executable") orelse false);
     if (!want_exe) return;
 
-    // The executable's parser and buffered stdio. Lazy, so a consumer that
-    // only imports the module never fetches them.
-    const cli_dep = b.lazyDependency("cli", .{
+    // The executable's parser and buffered stdio. These are eager: a nested
+    // dependency does not get the build runner's second configure pass, so a
+    // lazy dependency would leave the artifact unbuilt.
+    const cli_dep = b.dependency("cli", .{
         .target = target,
         .optimize = optimize,
-    }) orelse return;
-    const stdx_dep = b.lazyDependency("stdx", .{
+    });
+    const stdx_dep = b.dependency("stdx", .{
         .target = target,
         .optimize = optimize,
-    }) orelse return;
+    });
 
     const exe = b.addExecutable(.{
         .name = "docgen",
