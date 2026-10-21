@@ -1,13 +1,18 @@
-# docgen
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/static/logo-dark.svg">
+    <img src="docs/static/logo.svg" alt="docgen" height="48">
+  </picture>
+</h1>
 
-Static API documentation for a Zig package. Point it at a root source file;
-it writes one `index.html` with the public declarations, their doc comments,
-and links to the source on GitHub. `--format json` writes the same document
-as `api.json` instead.
+API documentation for Zig packages, as JSON.
 
-This is a POC. It reads Zig syntax with `std.zig.Ast`. It does not use the
-compiler's WebAssembly docs viewer, and it ships no JavaScript or
-`sources.tar`.
+docgen reads a Zig package's public API into one JSON document or one HTML
+page. The JSON is the interface; the HTML page is a renderer. The baskingspot
+docs theme is another renderer.
+
+It parses the source with `std.zig.Ast`. It does not run the compiler or
+resolve the build graph.
 
 ## Use
 
@@ -19,50 +24,71 @@ zig build run -- --root src/root.zig --out zig-out/docs --title mylib \
 ```
 
 `just doc` builds the reference for this repository into `zig-out/docs`.
-`just serve` serves it at <http://127.0.0.1:8000>. Set `PORT` to change the port:
-`PORT=9000 just serve`.
+`just serve` serves it at <http://127.0.0.1:8000>. Set `PORT` to change the
+port: `PORT=9000 just serve`.
 
-Write the extracted model as JSON instead of HTML:
+### JSON
+
+`--format json` writes the model instead of the page:
 
 ```sh
 zig build run -- --root src/root.zig --out /tmp/docgen-api --format json
 ```
 
-That writes `/tmp/docgen-api/api.json`: schema version 1, the package
-metadata, the root `//!` docs, one flat pre-order symbol list, and an empty
-`diagnostics` list. Doc comments stay raw markdown and signatures stay source
-text; there is no HTML and there are no source URLs in the JSON. Treat the
-JSON model as the stable interface; the HTML page is a renderer of it.
+That writes `/tmp/docgen-api/api.json`. The document has:
+
+- `schema_version`: 1
+- `package`: name, root, repository URL, revision
+- `module_docs`: the root `//!` markdown
+- `symbols`: a flat pre-order list
+- `diagnostics`: an empty array
+
+A symbol has `name`, `fqn`, `kind`, `depth`, `parent`, `signature`, `docs`,
+`file`, and `line`. Doc comments stay raw markdown. Signatures keep their
+source line breaks. The JSON contains no HTML and no source URLs; a consumer
+can build the URL from the package and the symbol's `file` and `line`. `fqn`
+is the path inside the package; a renderer can prefix the package name for a
+page anchor.
+
+The schema version is part of the file. A change to the schema is a breaking
+change.
+
+### In a baskingspot repo
+
+The `baskingspot` flake's `docs` devshell provides docgen, Zola, and
+`baskingspot-docs`. A repository's `just doc` runs:
+
+```sh
+docgen --root src/root.zig --title NAME --repo-url https://github.com/baskingspot/NAME --rev main --format json --out docs/data
+baskingspot-docs build NAME
+```
+
+The theme reads `docs/data/api.json` at build time and renders the API page.
+Zola does not publish the JSON. The theme reads the JSON; it does not change
+the generator.
 
 ### Document another repository
 
-The command above runs from this repository, so it documents this
-repository. Build the binary once, then run it from the checkout you want to
-document:
+Run from the checkout you want to document, with docgen on PATH:
 
 ```sh
-cd ~/code/baskingspot/docgen
-zig build
-
-cd ~/code/baskingspot/stdx
-../docgen/zig-out/bin/docgen \
+docgen \
   --root src/root.zig \
-  --out /tmp/stdx-api \
-  --title stdx \
-  --repo-url https://github.com/baskingspot/stdx \
+  --out /tmp/mylib-api \
+  --title mylib \
+  --repo-url https://github.com/baskingspot/mylib \
   --rev main
 ```
 
-Open `/tmp/stdx-api/index.html` directly, or serve the directory with
-`python3 -m http.server -b 127.0.0.1 -d /tmp/stdx-api 8000`. Run from the
-target repository root so `--root` and the GitHub source paths are relative
-to that repository.
+`--root` and the GitHub source paths are relative to the repository root. Open
+`/tmp/mylib-api/index.html` directly, or serve the directory with
+`python3 -m http.server -b 127.0.0.1 -d /tmp/mylib-api 8000`.
 
 ## Build integration
 
-Add docgen as a dependency, then run its artifact as a build step. A
-consumer that only calls the library gets the module and nothing else; pass
-`.exe = true` to build the command as well:
+A Zig build can run the CLI as an artifact. A consumer that only calls the
+library gets the module and no executable; pass `.exe = true` to build the
+command:
 
 ```zig
 const docgen_dep = b.dependency("docgen", .{ .exe = true });
@@ -74,6 +100,7 @@ docs.addArgs(&.{
     "--title",    "mylib",
     "--repo-url", "https://github.com/baskingspot/mylib",
     "--rev",      "main",
+    "--format",   "json",
     "--out",
 });
 const api = docs.addOutputDirectoryArg("api");
@@ -87,49 +114,55 @@ docs_step.dependOn(&install.step);
 ```
 
 `--out` comes immediately before the output directory. `addOutputDirectoryArg`
-creates that directory and gives the install step a `LazyPath`.
+creates that directory and gives the install step a `LazyPath`. This example
+writes `api.json` to `zig-out/docs`. Leave out `--format` and its value to
+write `index.html` instead.
 
 ## What it does
 
 - Follows relative `@import("file.zig")` declarations, chained
   `@import("file.zig").Name` re-exports, local aliases, and conditional
   aliases such as `pub const pages = if (...) pages_mod else void;`.
-- Collects `pub` declarations and public container members, including
-  tagged unions (`union(enum)` and `union(enum(T))`).
-- Keeps constant and variable signatures with their initializer and source
-  layout, so `pub const empty = 0x80;` and a multi-line parameter list render
-  as written.
-- Renders doc comments as paragraphs, headings, and inline code. A module's
-  `//!` docs stay with the module; they do not attach to the first declaration.
-- Writes one page with an inline stylesheet, or the model as JSON with
-  `--format json`. The page makes no network requests.
-
-On stdx, run from the stdx checkout with `--root src/root.zig`, it writes
-869 sections in 506 KB. Gzipped, the page is 57 KB.
+- Collects `pub` declarations and public container members, including tagged
+  unions (`union(enum)` and `union(enum(T))`).
+- Keeps signatures with their initializer and source layout. `pub const empty
+= 0x80;` keeps its value; a multi-line parameter list keeps its lines.
+- Keeps doc comments as raw markdown in the model. The standalone page renders
+  paragraphs, headings, and inline code; the Zola theme uses its own markdown.
+- Writes one JSON document or one self-contained HTML page. The standalone
+  page has inline CSS and no script, and it makes no network requests.
+- On stdx, the model has 869 symbols; the standalone page is 509 KB, or 57 KB
+  gzipped.
 
 ## Limits
 
-- It is an AST reader. It follows relative imports, local aliases, and
-  chained re-exports. It does not resolve package imports (`@import("std")`,
-  `@import("stdx")`), primitives, or foreign types.
-- A type function is expanded when its body returns a container directly,
-  names a local container or type function, calls a local type function, or
-  selects one with `if` or `switch`. An instantiation alias such as
-  `pub const Bytes = buf.Array(u8, 32);` stays a constant, and member
-  signatures keep the callee's parameter names.
-- It follows relative imports only. A package import is a module with no
-  members.
+- It is an AST reader. It follows relative imports, local aliases, and chained
+  re-exports. It does not resolve package imports (`@import("std")`,
+  `@import("stdx")`), primitives, or foreign types. A package import is a
+  module with no members.
+- A type function expands when its body returns a container directly, names a
+  local container or type function, calls a local type function, or selects
+  one with `if` or `switch`. An instantiation alias such as `pub const Bytes =
+buf.Array(u8, 32);` stays a constant. Member signatures keep the callee's
+  parameter names.
 - An alias that names a sibling declaration inside the same container is not
-  followed. An error set keeps its initializer text but does not list its
+  followed. An error set keeps its initializer text and does not list its
   members.
 - The page is one file. A large package produces a large page.
-- Source links assume `--root` is relative to the repository root.
+- Source links are relative to the repository root. Run docgen from that root.
 
 ## Work on it
 
-`nix develop` provides the toolchain. `just test`, `just doc`, and `just lint`
-are the commands, and `just ci` runs what CI runs.
+`nix develop` provides the toolchain. `just test`, `just doc`, `just lint`, and
+`just ci` are the commands. Run `just fmt` before a commit.
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See `LICENSE`. The logo files in `docs/static/` are baskingspot marks and
+are not covered by it. See `docs/static/LICENSE`.
+
+## How it's made
+
+Built with LLM assistance. [How, in detail](https://github.com/baskingspot/.github/blob/main/docs/AI.md).
+
+<a href="https://github.com/baskingspot"><img src="https://raw.githubusercontent.com/baskingspot/.github/main/brand/assets/badge.svg" alt="baskingspot" height="24"></a>
