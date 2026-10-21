@@ -26,6 +26,8 @@ All notable changes to docgen are recorded here. The format follows
 
 ### Changed
 
+- Signatures keep their source line breaks and indentation, so multi-line
+  parameter lists and error sets render as written.
 - The CLI uses `baskingspot/cli` for flags and `baskingspot/stdx` for buffered
   output. Expected errors print one line; usage errors exit 2 and I/O errors
   exit 1.

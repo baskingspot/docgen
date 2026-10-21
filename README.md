@@ -96,8 +96,9 @@ creates that directory and gives the install step a `LazyPath`.
   aliases such as `pub const pages = if (...) pages_mod else void;`.
 - Collects `pub` declarations and public container members, including
   tagged unions (`union(enum)` and `union(enum(T))`).
-- Keeps constant and variable signatures with their initializer, so
-  `pub const empty = 0x80;` and `pub const ParseError = error{ ... };` render.
+- Keeps constant and variable signatures with their initializer and source
+  layout, so `pub const empty = 0x80;` and a multi-line parameter list render
+  as written.
 - Renders doc comments as paragraphs, headings, and inline code. A module's
   `//!` docs stay with the module; they do not attach to the first declaration.
 - Writes one page with an inline stylesheet, or the model as JSON with

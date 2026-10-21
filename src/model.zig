@@ -93,7 +93,7 @@ pub const Symbol = struct {
     depth: usize,
     /// The parent's `fqn`, or null at the top level.
     parent: ?[]const u8,
-    /// Source text, whitespace collapsed onto one line.
+    /// Source text, preserving the source's line breaks and indentation.
     signature: []const u8,
     /// Raw doc comment markdown, without the `///` markers.
     docs: []const u8,

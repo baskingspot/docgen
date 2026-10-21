@@ -230,7 +230,7 @@ const Generator = struct {
                 const name_token = proto.name_token orelse return null;
                 const name = ast.tokenSlice(name_token);
                 const proto_node = protoNode(ast, node);
-                const signature = try collapsedSource(gen.allocator, ast, proto_node);
+                const signature = sourceOf(ast, proto_node);
                 const docs = try docText(gen.allocator, ast, node);
                 const fqn = try joinFqn(gen.allocator, prefix, name);
                 const kind: Kind = if (returnsType(ast, node)) .type_function else .function;
@@ -264,7 +264,7 @@ const Generator = struct {
                 const name = ast.tokenSlice(name_token);
                 const fqn = try joinFqn(gen.allocator, prefix, name);
                 const docs = try docText(gen.allocator, ast, node);
-                const call_site_signature = try varSignature(gen.allocator, ast, var_decl);
+                const call_site_signature = varSignature(ast, var_decl);
 
                 if (var_decl.ast.init_node.unwrap()) |init_node| {
                     if (containerKind(ast, init_node)) |container_kind| {
@@ -362,7 +362,7 @@ const Generator = struct {
                     const name_token = field.ast.main_token;
                     const name = ast.tokenSlice(name_token);
                     const fqn = try joinFqn(gen.allocator, prefix, name);
-                    const signature = try collapsedSource(gen.allocator, ast, member);
+                    const signature = sourceOf(ast, member);
                     const docs = try docText(gen.allocator, ast, member);
                     try members.append(gen.allocator, .{
                         .name = name,
@@ -514,7 +514,7 @@ const Generator = struct {
                     } };
                 }
                 return .{ .function = .{
-                    .signature = try collapsedSource(gen.allocator, ast, protoNode(ast, ref.node)),
+                    .signature = sourceOf(ast, protoNode(ast, ref.node)),
                     .docs = docs,
                 } };
             },
@@ -1102,14 +1102,14 @@ fn importPath(allocator: Allocator, ast: *const Ast, node: Ast.Node.Index) !?[]c
     return std.zig.string_literal.parseAlloc(allocator, lit) catch null;
 }
 
-fn varSignature(allocator: Allocator, ast: *const Ast, var_decl: Ast.full.VarDecl) ![]const u8 {
+fn varSignature(ast: *const Ast, var_decl: Ast.full.VarDecl) []const u8 {
     const last_token = if (var_decl.ast.init_node.unwrap()) |init_node|
         ast.lastToken(init_node)
     else if (var_decl.ast.type_node.unwrap()) |type_node|
         ast.lastToken(type_node)
     else
         var_decl.ast.mut_token + 1;
-    return collapsedBetween(allocator, ast, var_decl.firstToken(), last_token);
+    return sourceBetween(ast, var_decl.firstToken(), last_token);
 }
 
 /// Container signatures stop at the container keyword and keep its argument:
@@ -1146,6 +1146,16 @@ fn containerSignature(
         try out.appendSlice(allocator, ")");
     }
     return out.toOwnedSlice(allocator);
+}
+
+fn sourceOf(ast: *const Ast, node: Ast.Node.Index) []const u8 {
+    return sourceBetween(ast, ast.firstToken(node), ast.lastToken(node));
+}
+
+fn sourceBetween(ast: *const Ast, first: Ast.TokenIndex, last: Ast.TokenIndex) []const u8 {
+    const start = ast.tokenStart(first);
+    const end = ast.tokenStart(last) + ast.tokenSlice(last).len;
+    return ast.source[start..end];
 }
 
 fn collapsedSource(allocator: Allocator, ast: *const Ast, node: Ast.Node.Index) ![]const u8 {
@@ -1340,6 +1350,35 @@ test "escaping" {
     defer out.deinit(testing.allocator);
     try appendEscaped(&out, testing.allocator, "<a & \"b\">");
     try testing.expectEqualStrings("&lt;a &amp; &quot;b&quot;&gt;", out.items);
+}
+
+test "multi-line signatures keep source line breaks" {
+    const source =
+        \\pub fn connect(
+        \\    comptime T: type,
+        \\    callback: *const fn (a: T, b: T) void,
+        \\) ?T {
+        \\    return null;
+        \\}
+    ;
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var gen: Generator = .{
+        .allocator = arena,
+        .io = testing.io,
+        .files = std.StringHashMap(*ParsedFile).init(arena),
+        .stack = .empty,
+        .alias_stack = .empty,
+    };
+    const file = try gen.parseSource("test.zig", source);
+    const symbols = try gen.parseDecls(file, "");
+    try testing.expectEqual(1, symbols.len);
+    try testing.expectEqualStrings(
+        "pub fn connect(\n    comptime T: type,\n" ++
+            "    callback: *const fn (a: T, b: T) void,\n) ?T",
+        symbols[0].signature,
+    );
 }
 
 test "type function members are collected" {
@@ -2070,7 +2109,9 @@ const expected_signatures = [_]ExpectedSymbol{
         .kind = .constant,
         .depth = 0,
         .parent = null,
-        .signature = "pub const ParseError = error{ UnexpectedEof, InvalidLength, }",
+        .signature = "pub const ParseError = error{\n" ++
+            "    UnexpectedEof,\n" ++
+            "    InvalidLength,\n}",
         .docs = "An error set.\n",
         .file = fixture_signatures,
         .line = 10,
