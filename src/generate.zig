@@ -1339,10 +1339,10 @@ test "docs render paragraphs, code, and headings" {
         \\Second paragraph.
     );
     try testing.expect(
-        mem.indexOf(u8, out.items, "<p>First paragraph with <code>code</code>.</p>") != null,
+        mem.find(u8, out.items, "<p>First paragraph with <code>code</code>.</p>") != null,
     );
-    try testing.expect(mem.indexOf(u8, out.items, "<h4>Details</h4>") != null);
-    try testing.expect(mem.indexOf(u8, out.items, "<p>Second paragraph.</p>") != null);
+    try testing.expect(mem.find(u8, out.items, "<h4>Details</h4>") != null);
+    try testing.expect(mem.find(u8, out.items, "<p>Second paragraph.</p>") != null);
 }
 
 test "escaping" {
@@ -1871,16 +1871,16 @@ test "renderHtml escapes <, &, and quotes" {
 
     const html = try renderHtml(arena, &document);
 
-    try testing.expect(mem.indexOf(u8, html, "<tag>") == null);
-    try testing.expect(mem.indexOf(u8, html, "less<") == null);
-    try testing.expect(mem.indexOf(u8, html, "<root>") == null);
-    try testing.expect(mem.indexOf(u8, html, "&lt;tag&gt;") != null);
-    try testing.expect(mem.indexOf(u8, html, "less&lt;") != null);
-    try testing.expect(mem.indexOf(u8, html, "&lt;root&gt;") != null);
-    try testing.expect(mem.indexOf(u8, html, "a&lt;b &amp; &quot;c&quot;") != null);
-    try testing.expect(mem.indexOf(u8, html, "a=1&amp;b=2") != null);
-    try testing.expect(mem.indexOf(u8, html, "&quot;quotes&quot;") != null);
-    try testing.expect(mem.indexOf(u8, html, "&quot;more&quot;") != null);
+    try testing.expect(mem.find(u8, html, "<tag>") == null);
+    try testing.expect(mem.find(u8, html, "less<") == null);
+    try testing.expect(mem.find(u8, html, "<root>") == null);
+    try testing.expect(mem.find(u8, html, "&lt;tag&gt;") != null);
+    try testing.expect(mem.find(u8, html, "less&lt;") != null);
+    try testing.expect(mem.find(u8, html, "&lt;root&gt;") != null);
+    try testing.expect(mem.find(u8, html, "a&lt;b &amp; &quot;c&quot;") != null);
+    try testing.expect(mem.find(u8, html, "a=1&amp;b=2") != null);
+    try testing.expect(mem.find(u8, html, "&quot;quotes&quot;") != null);
+    try testing.expect(mem.find(u8, html, "&quot;more&quot;") != null);
 }
 
 const expected_tagged = [_]ExpectedSymbol{
