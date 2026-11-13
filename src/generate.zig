@@ -2,7 +2,7 @@
 //!
 //! This is deliberately an AST-only reader. It follows relative `@import`
 //! paths, collects public declarations and their doc comments into
-//! `model.Document`, and renders the document as one HTML page. It does not
+//! `Document`, and renders the document as one HTML page. It does not
 //! resolve types, aliases, or the build graph.
 
 const std = @import("std");
@@ -751,7 +751,7 @@ pub fn generate(allocator: Allocator, io: Io, options: Options) !Result {
 
 /// Render a document as one HTML page. The model is rendered in flat order;
 /// `depth` selects the heading level and restores the member nesting.
-pub fn renderHtml(allocator: Allocator, document: *const model.Document) ![]const u8 {
+pub fn renderHtml(allocator: Allocator, document: *const Document) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     const w = &out;
 
@@ -828,7 +828,7 @@ pub fn renderHtml(allocator: Allocator, document: *const model.Document) ![]cons
 fn renderSections(
     out: *std.ArrayList(u8),
     allocator: Allocator,
-    document: *const model.Document,
+    document: *const Document,
 ) !void {
     const Open = struct {
         depth: usize,
@@ -880,7 +880,7 @@ fn renderNav(out: *std.ArrayList(u8), allocator: Allocator, symbol: model.Symbol
 fn renderSymbol(
     out: *std.ArrayList(u8),
     allocator: Allocator,
-    document: *const model.Document,
+    document: *const Document,
     symbol: model.Symbol,
 ) !void {
     const level = @min(symbol.depth + 2, 5);
@@ -1830,7 +1830,7 @@ test "JSON round-trips into the model and renders the same HTML" {
 
     const document = try extractFixture(arena);
     const json = try writeJson(arena, &document);
-    const parsed = try std.json.parseFromSlice(model.Document, arena, json, .{});
+    const parsed = try std.json.parseFromSlice(Document, arena, json, .{});
 
     try testing.expectEqualStrings(document.module_docs, parsed.value.module_docs);
     try testing.expectEqual(document.symbols.len, parsed.value.symbols.len);
@@ -1856,7 +1856,7 @@ test "renderHtml escapes <, &, and quotes" {
         .file = "src/mod.zig",
         .line = 7,
     }};
-    const document: model.Document = .{
+    const document: Document = .{
         .generator = .{ .name = "docgen", .version = "0.0.0" },
         .package = .{
             .name = "a<b & \"c\"",
