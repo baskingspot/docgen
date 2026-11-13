@@ -10,8 +10,8 @@
             .hash = "cli-0.3.1-nGM5m-sVAQB7tupXqokmZpPHajiV5eZPcbUVDRvGgNPb",
         },
         .stdx = .{
-            .url = "https://baskingspot.dev/stdx/v0.3.0.tar.gz",
-            .hash = "stdx-0.3.0-CcWego4nDwC5PxPd4F-nlcOWXxAVCZ6MDI5f3YNVNSO7",
+            .url = "https://baskingspot.dev/stdx/v0.5.0.tar.gz",
+            .hash = "stdx-0.5.0-CcWegogqEQAvbEzD5F1r02a42hPX7GV82njuREakeC3a",
         },
         // The test runner. Lazy: only the root build runs tests, and
         // build.zig returns early for a consumer.
