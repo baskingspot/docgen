@@ -129,5 +129,5 @@ pub fn writeJson(allocator: Allocator, document: *const Document) ![]const u8 {
     const json = try std.json.Stringify.valueAlloc(allocator, document.*, .{
         .whitespace = .indent_2,
     });
-    return std.fmt.allocPrint(allocator, "{s}\n", .{json});
+    return allocator.print("{s}\n", .{json});
 }

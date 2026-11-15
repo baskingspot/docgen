@@ -128,7 +128,7 @@ const Generator = struct {
             gen.allocator,
             .limited(16 * 1024 * 1024),
         );
-        const source = try gen.allocator.dupeZ(u8, raw);
+        const source = try gen.allocator.dupeSentinel(u8, raw, 0);
         const file = try gen.parseSource(path, source);
         try gen.files.put(try gen.allocator.dupe(u8, path), file);
         return file;
@@ -142,7 +142,7 @@ const Generator = struct {
         path: []const u8,
         source: [:0]const u8,
     ) anyerror!*ParsedFile {
-        const ast: Ast = try .parse(gen.allocator, source, .zig);
+        const ast: Ast = try .parse(gen.allocator, source, .{});
         if (ast.errors.len != 0) {
             const tok = ast.tokens.items(.start)[ast.errors[0].token];
             const loc = std.zig.findLineColumn(ast.source, tok + ast.errorOffset(ast.errors[0]));
@@ -905,7 +905,7 @@ fn renderSymbol(
         try out.appendSlice(allocator, "</div>\n");
     }
     if (document.package.repo_url.len != 0) {
-        const url = try std.fmt.allocPrint(allocator, "{s}/blob/{s}/{s}#L{d}", .{
+        const url = try allocator.print("{s}/blob/{s}/{s}#L{d}", .{
             document.package.repo_url, document.package.rev, symbol.file, symbol.line,
         });
         try out.appendSlice(allocator, "<a class=\"src\" href=\"");
@@ -1194,7 +1194,7 @@ fn sourceLine(ast: *const Ast, node: Ast.Node.Index) usize {
 
 fn joinFqn(allocator: Allocator, prefix: []const u8, name: []const u8) ![]const u8 {
     if (prefix.len == 0) return allocator.dupe(u8, name);
-    return std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, name });
+    return allocator.print("{s}.{s}", .{ prefix, name });
 }
 
 fn containerDocs(allocator: Allocator, ast: *const Ast) ![]const u8 {

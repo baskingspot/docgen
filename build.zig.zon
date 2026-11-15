@@ -2,7 +2,7 @@
     .name = .docgen,
     .version = "0.0.0",
     .fingerprint = 0xef4e5a86553a73be, // Changing this has security and trust implications.
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
         // The CLI parser and the executable's buffered stdio.
         .cli = .{

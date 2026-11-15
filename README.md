@@ -16,7 +16,7 @@ resolve the build graph.
 
 ## Use
 
-`nix develop` provides Zig 0.16 and the tools.
+`nix develop` provides Zig 0.17 and the tools.
 
 ```sh
 zig build run -- --root src/root.zig --out zig-out/docs --title mylib \

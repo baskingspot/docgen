@@ -26,6 +26,8 @@ All notable changes to docgen are recorded here. The format follows
 
 ### Changed
 
+- Zig 0.17 is required: `minimum_zig_version` is `0.17.0`, and Zig 0.16 no
+  longer builds the package.
 - Signatures keep their source line breaks and indentation, so multi-line
   parameter lists and error sets render as written.
 - The CLI uses `baskingspot/cli` for flags and `baskingspot/stdx` for buffered

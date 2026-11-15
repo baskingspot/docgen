@@ -19,7 +19,7 @@ justfile build the standalone page.
 
 ## Environment
 
-Zig 0.16 only. The flake is the tool contract, from `baskingspot/nix`:
+Zig 0.17 only. The flake is the tool contract, from `baskingspot/nix`:
 `nix develop` provides Zig, `ziglint`, and the base tools. The justfile is the
 command interface: `just test`, `just doc`, `just serve`, `just lint`, and
 `just ci`. Run `just fmt` before you commit.

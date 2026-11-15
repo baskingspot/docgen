@@ -63,15 +63,13 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run docgen");
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);
-    if (b.args) |args| run_cmd.addArgs(args);
+    run_cmd.addPassthruArgs();
 
     const mod_tests = b.addTest(.{ .root_module = mod, .test_runner = test_runner });
     const run_mod_tests = b.addRunArtifact(mod_tests);
-    run_mod_tests.addArg(b.fmt("--seed=0x{x}", .{b.graph.random_seed}));
 
     const exe_tests = b.addTest(.{ .root_module = exe.root_module, .test_runner = test_runner });
     const run_exe_tests = b.addRunArtifact(exe_tests);
-    run_exe_tests.addArg(b.fmt("--seed=0x{x}", .{b.graph.random_seed}));
 
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);

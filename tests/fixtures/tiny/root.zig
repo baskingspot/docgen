@@ -36,7 +36,7 @@ pub fn Array(comptime len: usize) type {
 
         /// An empty array.
         pub fn empty() @This() {
-            return .{ .data = [_]u8{0} ** len };
+            return .{ .data = @splat(0) };
         }
     };
 }
