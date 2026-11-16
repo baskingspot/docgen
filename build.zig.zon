@@ -6,18 +6,18 @@
     .dependencies = .{
         // The CLI parser and the executable's buffered stdio.
         .cli = .{
-            .url = "https://baskingspot.dev/cli/v0.3.1.tar.gz",
-            .hash = "cli-0.3.1-nGM5m-sVAQB7tupXqokmZpPHajiV5eZPcbUVDRvGgNPb",
+            .url = "https://baskingspot.dev/cli/v0.4.0.tar.gz",
+            .hash = "cli-0.4.0-nGM5m7AQAQCI1x9m-vfTPk0vwfkSxK2Es2NdViVU0wFS",
         },
         .stdx = .{
-            .url = "https://baskingspot.dev/stdx/v0.5.0.tar.gz",
-            .hash = "stdx-0.5.0-CcWegogqEQAvbEzD5F1r02a42hPX7GV82njuREakeC3a",
+            .url = "https://baskingspot.dev/stdx/v0.6.0.tar.gz",
+            .hash = "stdx-0.6.0-CcWegpsXEQBPvqhuSRRDiRjq08s5gXavvTuvoL-Bo3BE",
         },
         // The test runner. Lazy: only the root build runs tests, and
         // build.zig returns early for a consumer.
         .testingx = .{
-            .url = "https://baskingspot.dev/testingx/v0.4.0.tar.gz",
-            .hash = "testingx-0.4.0-ib95-2JkAwDVM639ma-akYafT4bdewLfpFaAEnLBzQXG",
+            .url = "https://baskingspot.dev/testingx/v0.5.0.tar.gz",
+            .hash = "testingx-0.5.0-ib95-9FWAwAzwy03e-h52udEnWkVzuV-gCFJTp1IQ5rV",
             .lazy = true,
         },
     },
