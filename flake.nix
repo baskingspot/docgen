@@ -27,8 +27,9 @@
               config.devShells."zig-0-17"
             ];
 
-            # Project-specific tools.
-            packages = with pkgs; [ ];
+            # Ziglint reads deprecations from the target std, so point it at
+            # 0.17 rather than whatever version it was built against.
+            packages = [ config.packages."ziglint-0-17" ];
           };
         };
     };

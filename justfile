@@ -23,7 +23,7 @@ serve: doc
 [doc("Lint Zig, Nix, Markdown, CSS, the workflows, and this justfile")]
 [group("lint")]
 lint:
-    ziglint
+    ziglint-0-17
     zig fmt --check src build.zig
     nix fmt -- --ci
     oxfmt --check README.md AGENTS.md CHANGELOG.md src/style.css .github

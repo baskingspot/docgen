@@ -20,8 +20,8 @@ justfile build the standalone page.
 ## Environment
 
 Zig 0.17 only. The flake is the tool contract, from `baskingspot/nix`:
-`nix develop` provides Zig, `ziglint`, and the base tools. The justfile is the
-command interface: `just test`, `just doc`, `just serve`, `just lint`, and
+`nix develop` provides Zig, `ziglint-0-17`, and the base tools. The justfile is
+the command interface: `just test`, `just doc`, `just serve`, `just lint`, and
 `just ci`. Run `just fmt` before you commit.
 
 The README uses the org voice. Read `.github/docs/VOICE.md` before changing
@@ -82,8 +82,10 @@ the symbol file paths are relative to it. `--rev` names the commit or branch.
 - Commit messages are one line, `area: summary`, and every commit is signed.
   Do not rewrite pushed history.
 - Gate commands on their exit codes, and claim only what you ran.
-- Format with `zig fmt` and lint with `ziglint`. `just fmt` and `just lint`
-  run both.
+- Format with `zig fmt` and lint with `ziglint-0-17`. `just fmt` and `just lint`
+  run both. The wrapper points ziglint at the 0.17 std, so the deprecation rule
+  fires against the API this repo targets. Plain `ziglint` reads whichever std
+  it was built against.
 - This repo's GitHub settings come from `baskingspot/.github`, with
   `just settings`. Do not change them by hand.
 - To graduate the project, follow the `baskingspot-new-repo` skill: marks,
