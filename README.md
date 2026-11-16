@@ -126,7 +126,7 @@ write `index.html` instead.
 - Collects `pub` declarations and public container members, including tagged
   unions (`union(enum)` and `union(enum(T))`).
 - Keeps signatures with their initializer and source layout. `pub const empty
-= 0x80;` keeps its value; a multi-line parameter list keeps its lines.
+  = 0x80;` keeps its value; a multi-line parameter list keeps its lines.
 - Keeps doc comments as raw markdown in the model. The standalone page renders
   paragraphs, headings, and inline code; the Zola theme uses its own markdown.
 - Writes one JSON document or one self-contained HTML page. The standalone
@@ -143,7 +143,7 @@ write `index.html` instead.
 - A type function expands when its body returns a container directly, names a
   local container or type function, calls a local type function, or selects
   one with `if` or `switch`. An instantiation alias such as `pub const Bytes =
-buf.Array(u8, 32);` stays a constant. Member signatures keep the callee's
+  buf.Array(u8, 32);` stays a constant. Member signatures keep the callee's
   parameter names.
 - An alias that names a sibling declaration inside the same container is not
   followed. An error set keeps its initializer text and does not list its

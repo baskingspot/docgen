@@ -52,9 +52,9 @@ pub fn build(b: *std.Build) void {
 
     // testingx provides the test runner. It is lazy because only this root
     // build uses it. On the first configure pass it is not fetched yet,
-    // `lazyDependency` returns null, and the build runner fetches it before
-    // rerunning this script.
-    const testingx_dep = b.lazyDependency("testingx", .{ .target = target });
+    // `dependencyLazy` reports that it is needed, and the build runner
+    // fetches it before rerunning this script.
+    const testingx_dep = b.dependencyLazy("testingx", .{ .target = target }) catch null;
     const test_runner: ?std.Build.Step.Compile.TestRunner = if (testingx_dep) |dep|
         .{ .path = dep.path("src/runner.zig"), .mode = .simple }
     else
