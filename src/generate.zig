@@ -252,6 +252,24 @@ const Generator = struct {
                 };
             },
 
+            .container_field,
+            .container_field_align,
+            .container_field_init,
+            => {
+                const field = ast.fullContainerField(node) orelse return null;
+                const name = ast.tokenSlice(field.ast.main_token);
+                return .{
+                    .name = name,
+                    .fqn = try joinFqn(gen.allocator, prefix, name),
+                    .kind = .field,
+                    .signature = sourceOf(ast, node),
+                    .docs = try docText(gen.allocator, ast, node),
+                    .file = file.path,
+                    .line = sourceLine(ast, node),
+                    .children = &.{},
+                };
+            },
+
             .global_var_decl,
             .local_var_decl,
             .simple_var_decl,
@@ -353,33 +371,8 @@ const Generator = struct {
         const container = ast.fullContainerDecl(&buf, container_node) orelse return &.{};
         var members: std.ArrayList(Node) = .empty;
         for (container.ast.members) |member| {
-            switch (ast.nodeTag(member)) {
-                .container_field,
-                .container_field_align,
-                .container_field_init,
-                => {
-                    const field = ast.fullContainerField(member) orelse continue;
-                    const name_token = field.ast.main_token;
-                    const name = ast.tokenSlice(name_token);
-                    const fqn = try joinFqn(gen.allocator, prefix, name);
-                    const signature = sourceOf(ast, member);
-                    const docs = try docText(gen.allocator, ast, member);
-                    try members.append(gen.allocator, .{
-                        .name = name,
-                        .fqn = fqn,
-                        .kind = .field,
-                        .signature = signature,
-                        .docs = docs,
-                        .file = file.path,
-                        .line = sourceLine(ast, member),
-                        .children = &.{},
-                    });
-                },
-                else => {
-                    if (try gen.parseDecl(file, member, prefix)) |symbol| {
-                        try members.append(gen.allocator, symbol);
-                    }
-                },
+            if (try gen.parseDecl(file, member, prefix)) |symbol| {
+                try members.append(gen.allocator, symbol);
             }
         }
         return members.toOwnedSlice(gen.allocator);
@@ -1412,6 +1405,41 @@ test "type function members are collected" {
     try testing.expectEqual(2, symbols[0].children.len);
     try testing.expectEqualStrings("data", symbols[0].children[0].name);
     try testing.expectEqualStrings("init", symbols[0].children[1].name);
+}
+
+test "file struct fields are collected" {
+    const source =
+        \\/// A span of time.
+        \\pub const Duration = @This();
+        \\
+        \\/// The count of nanoseconds.
+        \\nanoseconds: u64,
+        \\
+        \\coefficient: f64 = 1.0,
+    ;
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var gen: Generator = .{
+        .allocator = arena,
+        .io = testing.io,
+        .files = std.StringHashMap(*ParsedFile).init(arena),
+        .stack = .empty,
+        .alias_stack = .empty,
+    };
+    const file = try gen.parseSource("test.zig", source);
+    const symbols = try gen.parseDecls(file, "time.Duration");
+    try testing.expectEqual(3, symbols.len);
+    try testing.expectEqualStrings("Duration", symbols[0].name);
+
+    try testing.expectEqual(Kind.field, symbols[1].kind);
+    try testing.expectEqualStrings("nanoseconds", symbols[1].name);
+    try testing.expectEqualStrings("time.Duration.nanoseconds", symbols[1].fqn);
+    try testing.expectEqualStrings("nanoseconds: u64", symbols[1].signature);
+    try testing.expectEqualStrings("The count of nanoseconds.\n", symbols[1].docs);
+
+    try testing.expectEqual(Kind.field, symbols[2].kind);
+    try testing.expectEqualStrings("coefficient: f64 = 1.0", symbols[2].signature);
 }
 
 test "conditional import aliases resolve" {

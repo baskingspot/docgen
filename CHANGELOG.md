@@ -22,6 +22,8 @@ All notable changes to docgen are recorded here. The format follows
   sets.
 - Type functions that name a local type, call one, or select one with `if` or
   `switch` expand; every `fn ... type` is labeled `type fn`.
+- File-struct fields (`const Match = @This();` followed by `field: T,` lines)
+  appear as `field` symbols under the file's symbol, with signature and docs.
 - `--version` prints the docgen version.
 
 ### Changed
