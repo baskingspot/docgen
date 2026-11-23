@@ -1,5 +1,7 @@
-//! The docgen library: read a Zig source tree into a public document model,
-//! then render it as HTML or JSON.
+//! API documentation for Zig packages, as JSON, with an HTML renderer.
+//!
+//! Read a Zig source tree into a public document model, then render it as
+//! HTML or JSON.
 
 pub const extract = @import("generate.zig").extract;
 pub const generate = @import("generate.zig").generate;

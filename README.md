@@ -5,7 +5,7 @@
   </picture>
 </h1>
 
-API documentation for Zig packages, as JSON.
+API documentation for Zig packages, as JSON, with an HTML renderer.
 
 docgen reads a Zig package's public API into one JSON document or one HTML
 page. The JSON is the interface; the HTML page is a renderer. The baskingspot
